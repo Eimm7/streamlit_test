@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 # Set the app title 
-st.title('Convert Your Money App !!') 
+st.title('Convert My No Money App....UUUUWAAAAA !!') 
 
 # Add a welcome message 
 st.write('Welcome to my Streamlit app!') 
