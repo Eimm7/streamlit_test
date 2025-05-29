@@ -1,8 +1,7 @@
 import streamlit as st
 import requests
-from datetime import datetime
 import pandas as pd
-import plotly.express as px
+from datetime import datetime
 
 # Set page config
 st.set_page_config(page_title="Convert My Money App", layout="centered")
@@ -43,12 +42,10 @@ if response.status_code == 200:
         rates_df = pd.DataFrame(rates.items(), columns=["Currency", "Rate"])
         st.dataframe(rates_df.sort_values(by="Currency").reset_index(drop=True))
 
-    # Plot a chart of top N exchange rates
+    # Plot a chart of top N exchange rates using native Streamlit chart
     with st.expander("📈 Visualize top 10 exchange rates"):
-        top_rates_df = rates_df.sort_values(by="Rate", ascending=False).head(10)
-        fig = px.bar(top_rates_df, x="Currency", y="Rate", title="Top 10 Exchange Rates vs MYR", text="Rate",
-                     labels={"Rate": "Exchange Rate"})
-        st.plotly_chart(fig)
+        top_rates_df = rates_df.sort_values(by="Rate", ascending=False).head(10).set_index("Currency")
+        st.bar_chart(top_rates_df)
 
     # Footer with update time
     st.caption(f"Exchange rates last updated on: {date}")
