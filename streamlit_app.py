@@ -5,7 +5,7 @@ import requests
 st.title('Convert My Money App !!') 
 
 # Add a welcome message 
-st.write('Welcome to my Streamlit app!') 
+st.write('Welcome, start convert your money NOW !!') 
 
 # Create a text input 
 widgetuser_input = st.text_input('Enter a custom message:', 'Hello, Streamlit!') 
