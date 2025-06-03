@@ -1,56 +1,87 @@
+# FloodSight Lite 🌧 - Streamlit Flood Forecast Mini Project
 import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
+import folium
+from streamlit.components.v1 import html
 
-# Set page config
-st.set_page_config(page_title="Convert My Money App", layout="centered")
+# ---------- CONFIG ----------
+st.set_page_config(page_title="FloodSight Malaysia", layout="wide")
+OPENWEATHER_API_KEY = "YOUR_OPENWEATHERMAP_API_KEY"
 
-# Title and subtitle
-st.title('💱 Convert My Money App !!')
-st.markdown('### Welcome, start converting your money NOW with style and ease!')
+# ---------- HEADER ----------
+st.title("🌧 FloodSight Malaysia")
+st.markdown("### Realtime Flood Risk Forecast for Malaysian Cities")
+# ---------- USER INPUT ----------
+city = st.text_input("Enter your city (e.g., Kuala Lumpur):", "Kuala Lumpur")
 
-# Custom message widget
-with st.expander("💬 Add a custom message"):
-    widgetuser_input = st.text_input('Enter your message:', 'Hello, Streamlit!')
-    st.info(f'You said: **{widgetuser_input}**')
-
-# API call
-response = requests.get('https://api.vatcomply.com/rates?base=MYR')
-
-if response.status_code == 200:
-    data = response.json()
-    rates = data.get("rates", {})
-    date = data.get("date")
-
-    # Sidebar for input
-    st.sidebar.header("Conversion Settings")
-    currency_list = sorted(rates.keys())
-    selected_currency = st.sidebar.selectbox("Choose currency to convert MYR to:", currency_list)
-    amount_myr = st.sidebar.number_input("Enter amount in MYR:", min_value=0.0, value=100.0, step=1.0)
-
-    # Perform conversion
-    if selected_currency in rates:
-        rate = rates[selected_currency]
-        converted_amount = amount_myr * rate
-        st.metric(label=f"💵 {amount_myr:.2f} MYR in {selected_currency}", value=f"{converted_amount:.2f} {selected_currency}", delta=f"Rate: {rate:.4f}")
+# ---------- FETCH WEATHER DATA ----------
+def get_weather(city):
+    url = "https://api.openweathermap.org/data/2.5/weather"
+    params = {"q": city, "appid": OPENWEATHER_API_KEY, "units": "metric"}
+    try:
+        res = requests.get(url, params=params)
+        if res.status_code == 200:
+            data = res.json()
+            return {
+                "temperature": data["main"]["temp"],
+                "humidity": data["main"]["humidity"],
+                "rain": data.get("rain", {}).get("1h", 0),
+                "time": datetime.utcfromtimestamp(data["dt"]).strftime('%Y-%m-%d %H:%M UTC')
+            }
+        else:
+            return None
+    except:
+        return None
+# ---------- FLOOD RISK LOGIC ----------
+def estimate_risk(rain, humidity):
+    if rain > 80 and humidity > 85:
+        return "🔴 High"
+    elif rain > 40:
+        return "🟠 Moderate"
     else:
-        st.warning("Selected currency not found in rates.")
+        return "🟢 Low"
 
-    # Show all rates in a table
-    with st.expander("📊 View all exchange rates"):
-        rates_df = pd.DataFrame(rates.items(), columns=["Currency", "Rate"])
-        st.dataframe(rates_df.sort_values(by="Currency").reset_index(drop=True))
+# ---------- RENDER ----------
+if st.button("🔍 Check Flood Risk"):
+    weather = get_weather(city)
 
-    # Plot a chart of top N exchange rates using native Streamlit chart
-    with st.expander("📈 Visualize top 10 exchange rates"):
-        top_rates_df = rates_df.sort_values(by="Rate", ascending=False).head(10).set_index("Currency")
-        st.bar_chart(top_rates_df)
+    if weather:
+        st.success("Weather data retrieved successfully.")
+        st.subheader("📊 Weather Info")
+        st.write(f"🌡 Temperature: {weather['temperature']} °C")
+        st.write(f"💧 Humidity: {weather['humidity']}%")
+        st.write(f"🌧 Rainfall (1h): {weather['rain']} mm")
+        st.caption(f"Data time: {weather['time']}")
 
-    # Footer with update time
-    st.caption(f"Exchange rates last updated on: {date}")
-else:
-    st.error(f"API call failed with status code: {response.status_code}")
+        # Estimate risk
+        risk = estimate_risk(weather['rain'], weather['humidity'])
+        st.sidebar.header("⚠ Flood Risk Level")
+        st.sidebar.markdown(f"## {risk}")
 
+        # Show folium map
+        coords = {
+            "Kuala Lumpur": [3.139, 101.6869],
+            "Johor Bahru": [1.4927, 103.7414],
+            "Penang": [5.4141, 100.3288],
+            "Kota Bharu": [6.1254, 102.2381]
+        }
+        location = coords.get(city, [4.2105, 101.9758])
+        map_obj = folium.Map(location=location, zoom_start=10)
+        folium.Marker(location, tooltip=f"{city} - Risk: {risk}").add_to(map_obj)
+        html(map_obj.repr_html(), height=500)
 
+        # Log data (in-memory only)
+        st.subheader("📈 Summary Table")
+        df = pd.DataFrame([{
+            "City": city,
+            "Rainfall (mm)": weather["rain"],
+            "Humidity (%)": weather["humidity"],
+            "Temperature (°C)": weather["temperature"],
+            "Flood Risk": risk
+        }])
+        st.dataframe(df)
 
+    else:
+        st.error("❌ Could not retrieve weather data. Check the city name or API key.")
