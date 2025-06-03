@@ -1,8 +1,6 @@
-# FloodSight Lite 🌧 - Streamlit Flood Forecast Mini Project
 import streamlit as st
 import requests
 import pandas as pd
-import matplotlib.pyplot as plt
 from datetime import datetime
 
 # ---------- CONFIG ----------
@@ -110,28 +108,21 @@ if st.button("🔍 Check Flood Risk"):
         }])
         st.dataframe(df, use_container_width=True)
 
-        # Show simple bar chart using matplotlib
+        # Use Streamlit's bar_chart for weather stats
         st.markdown("#### 📊 Weather Breakdown")
-        fig, ax = plt.subplots()
-        metrics = ["Temperature (°C)", "Humidity (%)", "Rainfall (mm)"]
-        values = [weather["temperature"], weather["humidity"], weather["rain"]]
-        ax.bar(metrics, values, color=['orange', 'blue', 'green'])
-        ax.set_ylabel("Values")
-        ax.set_title("Weather Stats")
-        st.pyplot(fig)
+        weather_df = pd.DataFrame({
+            "Metric": ["Temperature (°C)", "Humidity (%)", "Rainfall (mm)"],
+            "Value": [weather["temperature"], weather["humidity"], weather["rain"]],
+        }).set_index("Metric")
+        st.bar_chart(weather_df)
 
-        # Rainfall History
+        # Rainfall History using line_chart
         st.markdown("#### 🌧 Hourly Rainfall History")
         rain_data = get_rainfall_history(city)
         if rain_data:
             times, rains = zip(*rain_data)
-            fig2, ax2 = plt.subplots()
-            ax2.plot(times, rains, marker='o', color='blue')
-            ax2.set_xticks(times[::3])
-            ax2.set_xticklabels(times[::3], rotation=45, ha='right')
-            ax2.set_ylabel("Rainfall (mm)")
-            ax2.set_title("Hourly Rainfall Today")
-            st.pyplot(fig2)
+            rain_df = pd.DataFrame({"Rainfall (mm)": rains}, index=pd.to_datetime(times))
+            st.line_chart(rain_df)
         else:
             st.info("No historical rainfall data available.")
 
