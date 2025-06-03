@@ -3,16 +3,22 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
-import folium
 from streamlit.components.v1 import html
+
+# Optional import with fallback message
+try:
+    import folium
+except ImportError:
+    folium = None
 
 # ---------- CONFIG ----------
 st.set_page_config(page_title="FloodSight Malaysia", layout="wide")
-OPENWEATHER_API_KEY = "YOUR_OPENWEATHERMAP_API_KEY"
+OPENWEATHER_API_KEY = "YOUR_OPENWEATHERMAP_API_KEY"  # Replace with your actual API key
 
 # ---------- HEADER ----------
 st.title("🌧 FloodSight Malaysia")
 st.markdown("### Realtime Flood Risk Forecast for Malaysian Cities")
+
 # ---------- USER INPUT ----------
 city = st.text_input("Enter your city (e.g., Kuala Lumpur):", "Kuala Lumpur")
 
@@ -34,6 +40,7 @@ def get_weather(city):
             return None
     except:
         return None
+
 # ---------- FLOOD RISK LOGIC ----------
 def estimate_risk(rain, humidity):
     if rain > 80 and humidity > 85:
@@ -60,7 +67,7 @@ if st.button("🔍 Check Flood Risk"):
         st.sidebar.header("⚠ Flood Risk Level")
         st.sidebar.markdown(f"## {risk}")
 
-        # Show folium map
+        # Show map if folium is available
         coords = {
             "Kuala Lumpur": [3.139, 101.6869],
             "Johor Bahru": [1.4927, 103.7414],
@@ -68,11 +75,15 @@ if st.button("🔍 Check Flood Risk"):
             "Kota Bharu": [6.1254, 102.2381]
         }
         location = coords.get(city, [4.2105, 101.9758])
-        map_obj = folium.Map(location=location, zoom_start=10)
-        folium.Marker(location, tooltip=f"{city} - Risk: {risk}").add_to(map_obj)
-        html(map_obj.repr_html(), height=500)
 
-        # Log data (in-memory only)
+        if folium:
+            map_obj = folium.Map(location=location, zoom_start=10)
+            folium.Marker(location, tooltip=f"{city} - Risk: {risk}").add_to(map_obj)
+            html(map_obj._repr_html_(), height=500)
+        else:
+            st.warning("📍 Map is not available because 'folium' is not installed.")
+
+        # Summary Table
         st.subheader("📈 Summary Table")
         df = pd.DataFrame([{
             "City": city,
@@ -84,4 +95,4 @@ if st.button("🔍 Check Flood Risk"):
         st.dataframe(df)
 
     else:
-        st.error("❌ Could not retrieve weather data. Check the city name or API key.")
+        st.error("❌ Could not retrieve weather data. Check the city name or API key.")
