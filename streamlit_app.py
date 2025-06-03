@@ -24,7 +24,7 @@ city = st.text_input("Enter your city (e.g., Kuala Lumpur):", "Kuala Lumpur")
 
 # ---------- FETCH WEATHER DATA ----------
 def get_weather(city):
-    url = "https://api.openweathermap.org/data/2.5/weather"
+    url = "https://www.weatherapi.com/"
     params = {"q": city, "appid": OPENWEATHER_API_KEY, "units": "metric"}
     try:
         res = requests.get(url, params=params)
