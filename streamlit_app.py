@@ -2,8 +2,8 @@
 import streamlit as st
 import requests
 import pandas as pd
+import matplotlib.pyplot as plt
 from datetime import datetime
-import plotly.express as px
 
 # ---------- CONFIG ----------
 st.set_page_config(page_title="FloodSight Malaysia", layout="wide")
@@ -13,7 +13,7 @@ WEATHERAPI_KEY = "1468e5c2a4b24ce7a64140429250306"
 st.title("🌧 FloodSight Malaysia")
 st.markdown("### Realtime Flood Risk Forecast for Malaysian Cities")
 
-# ---------- CITY OPTIONS ----------
+# ---------- CITY OPTIONS (Flood-Prone Areas Only) ----------
 city_coords = {
     "Kuala Lumpur": [3.139, 101.6869],
     "Shah Alam": [3.0738, 101.5183],
@@ -22,15 +22,16 @@ city_coords = {
     "Johor Bahru": [1.4927, 103.7414],
     "Kota Bharu": [6.1254, 102.2381],
     "Kuantan": [3.8077, 103.3260],
-    "Ipoh": [4.5975, 101.0901],
-    "Seremban": [2.7258, 101.9381],
-    "Alor Setar": [6.1194, 100.3679],
-    "Kuala Terengganu": [5.3290, 103.1370]
+    "Kuala Terengganu": [5.3290, 103.1370],
+    "Klang": [3.0333, 101.45],
+    "Muar": [2.0500, 102.5667],
+    "Pasir Mas": [6.0333, 102.1333],
+    "Batu Pahat": [1.8500, 102.9333]
 }
 
 # ---------- USER INPUT ----------
 st.markdown("#### 🏩 Choose a city")
-city = st.selectbox("Select city for flood forecast:", list(city_coords.keys()))
+city = st.selectbox("Select city for flood forecast:", sorted(city_coords.keys()))
 
 # ---------- FETCH WEATHER DATA ----------
 def get_weather(city):
@@ -50,6 +51,23 @@ def get_weather(city):
             return None
     except:
         return None
+
+# ---------- FETCH RAINFALL HISTORY ----------
+def get_rainfall_history(city):
+    url = "http://api.weatherapi.com/v1/history.json"
+    date_today = datetime.today().strftime('%Y-%m-%d')
+    params = {"key": WEATHERAPI_KEY, "q": city, "dt": date_today}
+    try:
+        res = requests.get(url, params=params)
+        if res.status_code == 200:
+            data = res.json()
+            hours = data["forecast"]["forecastday"][0]["hour"]
+            rain_by_hour = [(hour["time"], hour["precip_mm"]) for hour in hours]
+            return rain_by_hour
+        else:
+            return []
+    except:
+        return []
 
 # ---------- FLOOD RISK LOGIC ----------
 def estimate_risk(rain, humidity):
@@ -92,14 +110,30 @@ if st.button("🔍 Check Flood Risk"):
         }])
         st.dataframe(df, use_container_width=True)
 
-        # Show simple bar chart
+        # Show simple bar chart using matplotlib
         st.markdown("#### 📊 Weather Breakdown")
-        chart_df = pd.DataFrame({
-            "Metric": ["Temperature (°C)", "Humidity (%)", "Rainfall (mm)"],
-            "Value": [weather["temperature"], weather["humidity"], weather["rain"]]
-        })
-        fig = px.bar(chart_df, x="Metric", y="Value", color="Metric", title="Weather Stats")
-        st.plotly_chart(fig, use_container_width=True)
+        fig, ax = plt.subplots()
+        metrics = ["Temperature (°C)", "Humidity (%)", "Rainfall (mm)"]
+        values = [weather["temperature"], weather["humidity"], weather["rain"]]
+        ax.bar(metrics, values, color=['orange', 'blue', 'green'])
+        ax.set_ylabel("Values")
+        ax.set_title("Weather Stats")
+        st.pyplot(fig)
+
+        # Rainfall History
+        st.markdown("#### 🌧 Hourly Rainfall History")
+        rain_data = get_rainfall_history(city)
+        if rain_data:
+            times, rains = zip(*rain_data)
+            fig2, ax2 = plt.subplots()
+            ax2.plot(times, rains, marker='o', color='blue')
+            ax2.set_xticks(times[::3])
+            ax2.set_xticklabels(times[::3], rotation=45, ha='right')
+            ax2.set_ylabel("Rainfall (mm)")
+            ax2.set_title("Hourly Rainfall Today")
+            st.pyplot(fig2)
+        else:
+            st.info("No historical rainfall data available.")
 
     else:
         st.error("❌ Could not retrieve weather data. Check the city name or API key.")
