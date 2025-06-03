@@ -13,7 +13,7 @@ except ImportError:
 
 # ---------- CONFIG ----------
 st.set_page_config(page_title="FloodSight Malaysia", layout="wide")
-OPENWEATHER_API_KEY = "YOUR_OPENWEATHERMAP_API_KEY"  # Replace with your actual API key
+OPENWEATHER_API_KEY = "1468e5c2a4b24ce7a64140429250306"  # Replace with your actual API key
 
 # ---------- HEADER ----------
 st.title("🌧 FloodSight Malaysia")
