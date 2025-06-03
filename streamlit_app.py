@@ -3,13 +3,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
-from streamlit.components.v1 import html
-
-# Optional import with fallback message
-try:
-    import folium
-except ImportError:
-    folium = None
+import plotly.express as px
 
 # ---------- CONFIG ----------
 st.set_page_config(page_title="FloodSight Malaysia", layout="wide")
@@ -87,16 +81,6 @@ if st.button("🔍 Check Flood Risk"):
         st.sidebar.header("⚠ Flood Risk Level")
         st.sidebar.markdown(f"## {risk}")
 
-        # Show map if folium is available
-        location = city_coords.get(city, [4.2105, 101.9758])
-
-        if folium:
-            map_obj = folium.Map(location=location, zoom_start=10)
-            folium.Marker(location, tooltip=f"{city} - Risk: {risk}").add_to(map_obj)
-            html(map_obj._repr_html_(), height=500)
-        else:
-            st.warning("📍 Map is not available because 'folium' is not installed.")
-
         # Summary Table
         st.markdown("#### 📈 Summary Table")
         df = pd.DataFrame([{
@@ -107,6 +91,15 @@ if st.button("🔍 Check Flood Risk"):
             "Flood Risk": risk
         }])
         st.dataframe(df, use_container_width=True)
+
+        # Show simple bar chart
+        st.markdown("#### 📊 Weather Breakdown")
+        chart_df = pd.DataFrame({
+            "Metric": ["Temperature (°C)", "Humidity (%)", "Rainfall (mm)"],
+            "Value": [weather["temperature"], weather["humidity"], weather["rain"]]
+        })
+        fig = px.bar(chart_df, x="Metric", y="Value", color="Metric", title="Weather Stats")
+        st.plotly_chart(fig, use_container_width=True)
 
     else:
         st.error("❌ Could not retrieve weather data. Check the city name or API key.")
