@@ -29,7 +29,7 @@ city_coords = {
 }
 
 # ---------- USER INPUT ----------
-st.markdown("#### 🏙 Choose a city")
+st.markdown("#### 🏩 Choose a city")
 city = st.selectbox("Select city for flood forecast:", list(city_coords.keys()))
 
 # ---------- FETCH WEATHER DATA ----------
