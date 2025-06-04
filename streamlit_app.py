@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import datetime
-import plotly.express as px
 import random
 
 # ----------------------------
@@ -31,13 +30,12 @@ def get_risk_level(value):
         return "Low"
 
 # ----------------------------
-# UI Layout
+# Page Settings
 # ----------------------------
 
 st.set_page_config("Malaysia Flood Forecasting", layout="wide")
-
-st.title("🌊 Malaysia Flood Forecasting App")
-st.markdown("This app provides rainfall data, forecast trends, and high-risk flood zones in Malaysia.")
+st.title("🌊 Malaysia Flood Forecasting (No Plotly)")
+st.markdown("Real-time forecast and rainfall trends for key flood-prone cities in Malaysia.")
 
 # ----------------------------
 # City Data
@@ -51,55 +49,46 @@ city_data = {
 }
 df_cities = pd.DataFrame(city_data)
 
-# Assign risk levels based on random recent rainfall
 df_cities["Recent Rainfall"] = [random.uniform(30, 120) for _ in range(len(df_cities))]
 df_cities["Risk"] = df_cities["Recent Rainfall"].apply(get_risk_level)
 
 # ----------------------------
-# Map of High-Risk Cities
+# Streamlit Map (High-Risk)
 # ----------------------------
 
-st.subheader("🗺️ High-Risk Flood Cities Map")
+st.subheader("🗺️ Map of Flood-Prone Cities")
 
-fig = px.scatter_mapbox(
-    df_cities, lat="Latitude", lon="Longitude",
-    hover_name="City", hover_data=["State", "Risk", "Recent Rainfall"],
-    color="Risk", size="Recent Rainfall",
-    color_discrete_map={"High": "red", "Moderate": "orange", "Low": "green"},
-    zoom=5, height=500
-)
-fig.update_layout(mapbox_style="open-street-map", margin={"r":0,"t":0,"l":0,"b":0})
-st.plotly_chart(fig, use_container_width=True)
+# Filter only high/moderate risk for emphasis
+high_risk_map = df_cities[df_cities["Risk"] != "Low"][["Latitude", "Longitude"]]
+st.map(high_risk_map)
 
 # ----------------------------
-# City Details & Trends
+# City Selection and Charts
 # ----------------------------
 
-st.subheader("📊 Rainfall Trends & Forecast")
+st.subheader("📊 Rainfall History & Forecast")
 
-selected_city = st.selectbox("Select a city to view details:", df_cities["City"])
+selected_city = st.selectbox("Choose a city to analyze:", df_cities["City"])
+
 col1, col2 = st.columns(2)
 
-# Last 30 days rainfall
 with col1:
     st.markdown("**📈 Last 30 Days Rainfall**")
     df_history = get_mock_rainfall_data(selected_city)
-    fig1 = px.line(df_history, x="Date", y="Rainfall (mm)", title=f"{selected_city} - Historical Rainfall", markers=True)
-    st.plotly_chart(fig1, use_container_width=True)
+    st.line_chart(df_history.set_index("Date"))
 
-# Next 7-day forecast
 with col2:
-    st.markdown("**🌧️ 7-Day Rainfall Forecast**")
+    st.markdown("**🌧️ 7-Day Forecast**")
     df_forecast = get_forecast_data(selected_city)
-    fig2 = px.bar(df_forecast, x="Date", y="Forecast (mm)", title=f"{selected_city} - Forecast", color="Forecast (mm)",
-                  color_continuous_scale="Blues")
-    st.plotly_chart(fig2, use_container_width=True)
+    st.bar_chart(df_forecast.set_index("Date"))
 
 # ----------------------------
-# Risk Summary Table
+# Risk Table
 # ----------------------------
 
-st.subheader("⚠️ City Risk Summary")
+st.subheader("⚠️ Risk Summary")
 
-st.dataframe(df_cities[["City", "State", "Recent Rainfall", "Risk"]].sort_values(by="Risk", ascending=False),
-             use_container_width=True)
+st.dataframe(
+    df_cities[["City", "State", "Recent Rainfall", "Risk"]].sort_values(by="Risk", ascending=False),
+    use_container_width=True
+)
