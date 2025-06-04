@@ -31,6 +31,12 @@ city_coords = {
 st.markdown("#### 🏩 Choose a city")
 city = st.selectbox("Select city for flood forecast:", sorted(city_coords.keys()))
 
+# ---------- SHOW MAP ----------
+st.markdown("#### 🗺 Map Location")
+latitude, longitude = city_coords[city]
+map_df = pd.DataFrame([[latitude, longitude]], columns=["lat", "lon"])
+st.map(map_df, zoom=10)
+
 # ---------- FETCH WEATHER DATA ----------
 def get_weather(city):
     url = "http://api.weatherapi.com/v1/current.json"
@@ -108,7 +114,7 @@ if st.button("🔍 Check Flood Risk"):
         }])
         st.dataframe(df, use_container_width=True)
 
-        # Use Streamlit's bar_chart for weather stats
+        # Weather Breakdown
         st.markdown("#### 📊 Weather Breakdown")
         weather_df = pd.DataFrame({
             "Metric": ["Temperature (°C)", "Humidity (%)", "Rainfall (mm)"],
@@ -116,7 +122,7 @@ if st.button("🔍 Check Flood Risk"):
         }).set_index("Metric")
         st.bar_chart(weather_df)
 
-        # Rainfall History using line_chart
+        # Rainfall History
         st.markdown("#### 🌧 Hourly Rainfall History")
         rain_data = get_rainfall_history(city)
         if rain_data:
@@ -125,6 +131,6 @@ if st.button("🔍 Check Flood Risk"):
             st.line_chart(rain_df)
         else:
             st.info("No historical rainfall data available.")
-
     else:
         st.error("❌ Could not retrieve weather data. Check the city name or API key.")
+
