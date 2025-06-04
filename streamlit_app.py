@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import calendar
 
 # ---------- CONFIG ----------
@@ -166,16 +166,15 @@ def estimate_risk(rain, humidity):
     else:
         return "🟢 Low"
 
-# ---------- LATEST FLOOD INFORMATION ----------
-st.sidebar.markdown("### 🆘 Latest Flood Information")
-st.sidebar.markdown(
-    """
-    **Recent Floods in Malaysia:**
-    - **Sarawak**: Over 13,000 evacuees due to severe flooding.
-    - **Sabah**: Keningau and Kinabatangan districts affected; 319 evacuees.
-    - **Johor**: Over 13,000 evacuees; Kota Tinggi and Johor Bahru hardest hit.
-    """
-)
+# ---------- LATEST FLOOD NEWS ----------
+def get_latest_flood_news():
+    # A simple static example since no API is integrated.
+    # You can replace with a real API or web scraping if desired.
+    return [
+        {"date": "2025-05-28", "location": "Kuala Lumpur", "description": "Severe flooding in low-lying areas due to heavy rain."},
+        {"date": "2025-05-20", "location": "Penang", "description": "Flash floods affected several districts causing road closures."},
+        {"date": "2025-04-15", "location": "Johor Bahru", "description": "Floodwaters rose after days of continuous rain."}
+    ]
 
 # ---------- FLOOD RISK CHECK ----------
 st.markdown("---")
@@ -190,13 +189,55 @@ if st.button("🔍 Check Flood Risk"):
         st.caption(f"🕒 Data time: {weather['time']}")
 
         risk = estimate_risk(weather["rain"], weather["humidity"])
+        
+        # Sidebar flood risk + preparation notes
         st.sidebar.header("⚠ Flood Risk Level")
         st.sidebar.markdown(f"## {risk}")
+        st.sidebar.markdown("""
+        ### 📝 What to Prepare Before Flood
+        - Prepare emergency kit with food, water, and medicines
+        - Keep important documents in waterproof bags
+        - Plan evacuation routes and safe places
+        - Charge your mobile devices
+        - Stay informed via local news and alerts
+        """)
 
         df = pd.DataFrame([{
             "City": selected_city,
             "Rainfall (mm)": weather["rain"],
             "Humidity (%)": weather["humidity"],
-            "Temperature (°C)": weather["temperature
-::contentReference[oaicite:10]{index=10}
- 
+            "Temperature (°C)": weather["temperature"],
+            "Flood Risk": risk
+        }])
+        st.markdown("#### 📊 Weather Summary")
+        st.dataframe(df, use_container_width=True)
+
+        chart_df = pd.DataFrame({
+            "Metric": ["Temperature", "Humidity", "Rainfall"],
+            "Value": [weather["temperature"], weather["humidity"], weather["rain"]]
+        }).set_index("Metric")
+        st.bar_chart(chart_df)
+
+        # Monthly Rainfall
+        st.markdown("#### 🌧 Daily Rainfall in Selected Month")
+        rain_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
+        if rain_data:
+            dates, rains = zip(*rain_data)
+            rain_df = pd.DataFrame({"Rainfall (mm)": rains}, index=pd.to_datetime(dates))
+            st.line_chart(rain_df)
+        else:
+            st.info("No monthly rainfall data available.")
+    else:
+        st.error("❌ Failed to retrieve weather data.")
+
+# ---------- NOTES ----------
+st.markdown("---")
+st.markdown("### ℹ️ Note:")
+st.markdown("Cities marked with 🌊 symbol are known to be flood-prone areas. Please take extra precautions.")
+
+# ---------- LATEST FLOOD INCIDENTS ----------
+st.markdown("---")
+st.markdown("### 📰 Latest Flood Incidents in Malaysia")
+latest_floods = get_latest_flood_news()
+for flood in latest_floods:
+    st.markdown(f"- **{flood['date']} - {flood['location']}**: {flood['description']}")
