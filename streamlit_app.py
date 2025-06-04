@@ -11,7 +11,6 @@ WEATHERAPI_KEY = "1468e5c2a4b24ce7a64140429250306"
 # ---------- HEADER ----------
 st.title("🌧 FloodSight Malaysia")
 st.markdown("### Realtime Flood Risk Forecast for Malaysian Cities")
-st.markdown("⚠️ Cities marked with 🌊 are known to be flood-prone areas.")
 
 # ---------- FLOOD-PRONE CITIES BY STATE ----------
 state_city_coords = {
@@ -167,6 +166,17 @@ def estimate_risk(rain, humidity):
     else:
         return "🟢 Low"
 
+# ---------- LATEST FLOOD INFORMATION ----------
+st.sidebar.markdown("### 🆘 Latest Flood Information")
+st.sidebar.markdown(
+    """
+    **Recent Floods in Malaysia:**
+    - **Sarawak**: Over 13,000 evacuees due to severe flooding.
+    - **Sabah**: Keningau and Kinabatangan districts affected; 319 evacuees.
+    - **Johor**: Over 13,000 evacuees; Kota Tinggi and Johor Bahru hardest hit.
+    """
+)
+
 # ---------- FLOOD RISK CHECK ----------
 st.markdown("---")
 if st.button("🔍 Check Flood Risk"):
@@ -183,41 +193,10 @@ if st.button("🔍 Check Flood Risk"):
         st.sidebar.header("⚠ Flood Risk Level")
         st.sidebar.markdown(f"## {risk}")
 
-        # Flood preparedness tips
-        st.sidebar.markdown("""
-        ---
-        ### 📝 Before a Flood: Be Prepared!
-        - Keep important documents in waterproof bags.
-        - Have an emergency kit ready (food, water, flashlight, batteries).
-        - Know your evacuation routes and nearest shelters.
-        - Charge your mobile devices and power banks.
-        - Avoid driving or walking through floodwaters.
-        """)
-
         df = pd.DataFrame([{
             "City": selected_city,
             "Rainfall (mm)": weather["rain"],
             "Humidity (%)": weather["humidity"],
-            "Temperature (°C)": weather["temperature"],
-            "Flood Risk": risk
-        }])
-        st.markdown("#### 📊 Weather Summary")
-        st.dataframe(df, use_container_width=True)
-
-        chart_df = pd.DataFrame({
-            "Metric": ["Temperature", "Humidity", "Rainfall"],
-            "Value": [weather["temperature"], weather["humidity"], weather["rain"]]
-        }).set_index("Metric")
-        st.bar_chart(chart_df)
-
-        # Monthly Rainfall
-        st.markdown("#### 🌧 Daily Rainfall in Selected Month")
-        rain_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
-        if rain_data:
-            dates, rains = zip(*rain_data)
-            rain_df = pd.DataFrame({"Rainfall (mm)": rains}, index=pd.to_datetime(dates))
-            st.line_chart(rain_df)
-        else:
-            st.info("No monthly rainfall data available.")
-    else:
-        st.error("❌ Failed to retrieve weather data.")
+            "Temperature (°C)": weather["temperature
+::contentReference[oaicite:10]{index=10}
+ 
