@@ -17,20 +17,17 @@ state_city_coords = {
         "Petaling Jaya": [3.1073, 101.6067],
         "Kajang 🌊": [2.9927, 101.7882],
         "Ampang 🌊": [3.1496, 101.7600],
-        "Gombak": [3.2960, 101.7255],
-        "Puchong 🌊": [3.0312, 101.6090]
+        "Gombak": [3.2960, 101.7255]
     },
     "Kuala Lumpur": {
         "Kuala Lumpur 🌊": [3.1390, 101.6869],
         "Setapak 🌊": [3.1979, 101.7146],
-        "Cheras 🌊": [3.0723, 101.7405],
-        "Titiwangsa 🌊": [3.1700, 101.7033]
+        "Cheras 🌊": [3.0723, 101.7405]
     },
     "Penang": {
         "George Town 🌊": [5.4164, 100.3327],
         "Bukit Mertajam": [5.3510, 100.4409],
-        "Butterworth": [5.3997, 100.3638],
-        "Nibong Tebal 🌊": [5.1500, 100.4333]
+        "Butterworth": [5.3997, 100.3638]
     },
     "Johor": {
         "Johor Bahru 🌊": [1.4927, 103.7414],
@@ -39,23 +36,7 @@ state_city_coords = {
         "Kluang 🌊": [2.0305, 103.3169],
         "Pontian": [1.4856, 103.3895],
         "Segamat 🌊": [2.5143, 102.8105]
-    },
-    "Kelantan": {
-        "Kota Bharu 🌊": [6.1250, 102.2386],
-        "Tumpat 🌊": [6.1762, 102.1523],
-        "Pasir Mas 🌊": [6.1347, 102.2781]
-    },
-    "Pahang": {
-        "Kuantan 🌊": [3.8071, 103.3260],
-        "Temerloh": [3.4512, 102.4120],
-        "Cameron Highlands": [4.4661, 101.3812]
-    },
-    "Perak": {
-        "Ipoh 🌊": [4.5975, 101.0901],
-        "Teluk Intan": [4.0097, 100.9500],
-        "Taiping 🌊": [4.8520, 100.7400]
-    },
-    # Add more states and flood prone cities here as needed
+    }
 }
 
 # Latest flood news (could be linked to actual sources)
@@ -82,6 +63,7 @@ known_flood_events = {
 }
 
 # ----------- UTILS -----------
+
 def get_weather(city):
     try:
         res = requests.get(
@@ -121,7 +103,7 @@ def get_monthly_rainfall(city, year, month):
             daily_rainfall.append((date_str, 0.0))
     return daily_rainfall
 
-def get_7day_forecast(city):
+def get_forecast(city):
     try:
         res = requests.get(
             "http://api.weatherapi.com/v1/forecast.json",
@@ -129,15 +111,12 @@ def get_7day_forecast(city):
         )
         if res.status_code == 200:
             data = res.json()
-            forecast = []
-            for day in data["forecast"]["forecastday"]:
-                date = day["date"]
-                rain_mm = day["day"]["totalprecip_mm"]
-                forecast.append((date, rain_mm))
-            return forecast
+            forecast_days = data["forecast"]["forecastday"]
+            # List of (date, total_rain_mm)
+            return [(fday["date"], fday["day"]["totalprecip_mm"]) for fday in forecast_days]
     except Exception as e:
-        st.error(f"Error fetching 7-day forecast: {e}")
-    return []
+        st.error(f"Error fetching forecast: {e}")
+    return None
 
 def estimate_risk(rain, humidity):
     if rain > 80 and humidity > 85:
@@ -164,9 +143,21 @@ def risk_color(risk_level):
     else:
         return "background-color:#4CAF50; color:white; font-weight:bold; padding:5px; border-radius:5px;"
 
+def is_recent_flood(city, date_str, days=30):
+    """Check if city has known flood event within `days` days from date_str"""
+    if city not in known_flood_events:
+        return False
+    date = datetime.strptime(date_str, "%Y-%m-%d")
+    for flood_date_str in known_flood_events[city]:
+        flood_date = datetime.strptime(flood_date_str, "%Y-%m-%d")
+        delta = abs((date - flood_date).days)
+        if delta <= days:
+            return True
+    return False
+
 def get_risk_for_date(city, date_str, rain_mm):
-    # If date is known flood event for the city, mark High risk with note
-    if city in known_flood_events and date_str in known_flood_events[city]:
+    # If date is known flood event or recent flood within last 30 days, mark High risk
+    if is_recent_flood(city, date_str):
         return "🔴 High (Actual Flood Recorded)"
     # Else use rainfall thresholds
     if rain_mm > 80:
@@ -186,8 +177,6 @@ st.sidebar.markdown(
 3. Click **Check Flood Risk** to get the latest weather and flood risk.
 4. View daily rainfall and flood risk history.
 5. Read latest flood news to stay informed.
-6. View 7-day rainfall forecast trends.
-7. See all high-risk cities highlighted on the map.
 """
 )
 st.sidebar.markdown("### 💧 Flood Preparedness Tips")
@@ -219,9 +208,8 @@ with col2:
     selected_month = st.selectbox("Select Month", list(range(1, 13)), format_func=lambda m: calendar.month_name[m])
 
 if selected_city:
-    tab1, tab2, tab3, tab4 = st.tabs(["Overview 🌡", "Rainfall History 📅", "Latest Flood News 📰", "7-Day Forecast & Map"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Overview 🌡", "Rainfall History 📅", "Latest Flood News 📰", "Flood Risk Map 🗺"])
 
-    # TAB 1: Current weather & risk overview
     with tab1:
         if st.button("🔍 Check Flood Risk"):
             weather = get_weather(selected_city)
@@ -240,84 +228,77 @@ if selected_city:
                 st.markdown("#### City Location")
                 st.map(pd.DataFrame([[latitude, longitude]], columns=["lat", "lon"]), zoom=10)
 
-            else:
-                st.error("Failed to retrieve weather data. Please try again later.")
+                # Show 7-day forecast rainfall trend & risk
+                forecast = get_forecast(selected_city)
+                if forecast:
+                    st.markdown("### 7-Day Rainfall Forecast & Risk")
+                    df_forecast = pd.DataFrame(forecast, columns=["Date", "Rainfall (mm)"])
+                    df_forecast["Risk"] = df_forecast.apply(lambda row: get_risk_for_date(selected_city, row["Date"], row["Rainfall (mm)"]), axis=1)
+                    df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
 
-    # TAB 2: Rainfall History (bar chart)
+                    st.bar_chart(df_forecast.set_index("Date")["Rainfall (mm)"])
+
+                    # Show risk table with colors
+                    def color_risk(val):
+                        if "High" in val:
+                            return 'background-color: #FF4B4B; color:white; font-weight:bold;'
+                        elif "Moderate" in val:
+                            return 'background-color: #FFA500; font-weight:bold;'
+                        else:
+                            return 'background-color: #4CAF50; color:white; font-weight:bold;'
+
+                    st.dataframe(df_forecast[["Date", "Risk"]].style.applymap(color_risk, subset=["Risk"]))
+                else:
+                    st.warning("Forecast data unavailable.")
+
     with tab2:
-        st.markdown(f"### Daily Rainfall History - {calendar.month_name[selected_month]} {selected_year}")
-        with st.spinner("Fetching rainfall data..."):
-            rainfall_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
+        # Show monthly rainfall history bar chart + flood risk info
+        daily_rainfall = get_monthly_rainfall(selected_city, selected_year, selected_month)
+        if daily_rainfall:
+            dates = [d for d, _ in daily_rainfall]
+            rains = [r for _, r in daily_rainfall]
+            df_daily = pd.DataFrame({
+                "Date": pd.to_datetime(dates),
+                "Rainfall (mm)": rains
+            })
+            # Calculate risk per day
+            df_daily["Risk"] = df_daily.apply(lambda row: get_risk_for_date(selected_city, row["Date"].strftime("%Y-%m-%d"), row["Rainfall (mm)"]), axis=1)
 
-        if rainfall_data:
-            df_rain = pd.DataFrame(rainfall_data, columns=["Date", "Rainfall (mm)"])
-            df_rain["Date"] = pd.to_datetime(df_rain["Date"])
+            st.markdown(f"### Daily Rainfall History - {calendar.month_name[selected_month]} {selected_year}")
 
-            # Bar chart for rainfall
-            st.bar_chart(df_rain.set_index("Date")["Rainfall (mm)"])
+            # Bar chart of rainfall
+            st.bar_chart(df_daily.set_index("Date")["Rainfall (mm)"])
 
-            st.markdown("#### Flood Risk History")
-            risk_list = []
-            for date, rain_mm in rainfall_data:
-                risk_label = get_risk_for_date(selected_city, date, rain_mm)
-                risk_list.append({
-                    "Date": date,
-                    "Rainfall (mm)": rain_mm,
-                    "Flood Risk": risk_label
-                })
-
-            df_risk = pd.DataFrame(risk_list)
-
-            # Color coding flood risk in table
+            # Show table with color-coded risk
             def color_risk(val):
                 if "High" in val:
-                    return 'background-color: #FF4B4B; color: white; font-weight: bold'
+                    return 'background-color: #FF4B4B; color:white; font-weight:bold;'
                 elif "Moderate" in val:
-                    return 'background-color: #FFA500; color: black; font-weight: bold'
+                    return 'background-color: #FFA500; font-weight:bold;'
                 else:
-                    return 'background-color: #4CAF50; color: white; font-weight: bold'
+                    return 'background-color: #4CAF50; color:white; font-weight:bold;'
 
-            st.dataframe(df_risk.style.applymap(color_risk, subset=["Flood Risk"]))
+            st.dataframe(df_daily.style.applymap(color_risk, subset=["Risk"]))
         else:
-            st.warning("No rainfall data available for this selection.")
+            st.warning("No rainfall history data available.")
 
-    # TAB 3: Latest Flood News
     with tab3:
-        st.markdown("### Latest Flood News & Updates")
+        st.markdown("### Latest Flood News")
         for news in latest_flood_news:
             st.markdown(f"**{news['date']}** - [{news['title']}]({news['link']})")
 
-    # TAB 4: 7-Day Forecast & High-Risk Cities Map
     with tab4:
-        st.markdown(f"### 7-Day Rainfall Forecast for {selected_city}")
-        forecast_data = get_7day_forecast(selected_city)
+        st.markdown("### Flood Risk Map of Selected States and Cities")
 
-        if forecast_data:
-            df_forecast = pd.DataFrame(forecast_data, columns=["Date", "Rainfall (mm)"])
-            df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
-
-            # Line chart with markers
-            st.line_chart(df_forecast.set_index("Date")["Rainfall (mm)"])
-
-            # Show flood risk for each day
-            risk_forecast = [get_risk_for_date(selected_city, row["Date"].strftime("%Y-%m-%d"), row["Rainfall (mm)"]) for _, row in df_forecast.iterrows()]
-            df_forecast["Flood Risk"] = risk_forecast
-            st.table(df_forecast.style.applymap(color_risk, subset=["Flood Risk"]))
-        else:
-            st.warning("Unable to fetch 7-day forecast.")
-
-        # Map showing all cities with flood risk
-        st.markdown("### Flood Risk Map: All Cities")
+        # Collect city info for map display
         all_cities = []
         for state, cities in state_city_coords.items():
             for city_name, coords in cities.items():
                 lat, lon = coords
-                # Use latest known rainfall or risk estimate for color (simulate here)
-                # We'll fetch current rainfall for each city is costly, so just random simulate or mark known flood events
                 risk = "🟢 Low"
-                # Mark as High if city in known_flood_events recently
-                recent_flood_dates = known_flood_events.get(city_name, [])
-                if recent_flood_dates:
+                # Check if recent flood event today or last 30 days
+                today_str = datetime.today().strftime("%Y-%m-%d")
+                if is_recent_flood(city_name, today_str):
                     risk = "🔴 High"
                 all_cities.append({
                     "City": city_name,
@@ -328,13 +309,34 @@ if selected_city:
                 })
 
         df_map = pd.DataFrame(all_cities)
-        # Color code points for map markers via risk (Streamlit map doesn't support color, so just show table)
-        st.dataframe(df_map[["City", "State", "Risk"]])
+        risk_colors = {"🟢 Low": "green", "🟠 Moderate": "orange", "🔴 High": "red"}
 
-        # Display map centered on Malaysia with markers for all cities
-        st.map(df_map.rename(columns={"lat": "latitude", "lon": "longitude"}))
+        # Display map with colored markers (using pydeck)
+        import pydeck as pdk
 
-else:
-    st.info("Please select a valid city to proceed.")
+        df_map["color"] = df_map["Risk"].map(risk_colors).fillna("green")
 
-# --- END OF APP ---
+        layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=df_map,
+            get_position='[lon, lat]',
+            get_fill_color="[255, 0, 0, 160]",  # Default red, will override in getFillColor
+            get_radius=8000,
+            pickable=True,
+            get_fill_color='[255 * (Risk == "🔴 High"), 165 * (Risk == "🟠 Moderate"), 0 * (Risk == "🟢 Low"), 160]'
+        )
+
+        view_state = pdk.ViewState(
+            latitude=df_map["lat"].mean(),
+            longitude=df_map["lon"].mean(),
+            zoom=7,
+            pitch=0
+        )
+
+        st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
+
+        st.markdown("### Cities and Their Current Flood Risk Level")
+        st.dataframe(df_map[["City", "State", "Risk"]].style.applymap(color_risk, subset=["Risk"]))
+
+# ------------- END -------------
+
