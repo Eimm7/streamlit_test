@@ -1,17 +1,17 @@
-# --- Import Required Libraries --- #
+# --- Import Libraries --- #
 import streamlit as st
 import requests
 import pandas as pd
 import pydeck as pdk
+from datetime import datetime
 
-# --- Page Configuration --- #
+# --- Set Page Configuration --- #
 st.set_page_config(page_title="Malaysia Flood Risk Forecast", page_icon="🌧", layout="wide")
 
-# --- API Key for WeatherAPI --- #
+# --- API Key --- #
 API_KEY = "1468e5c2a4b24ce7a64140429250306"
 
-# --- Dictionary: States & 6 Flood-Prone Cities Each with Coordinates --- #
-# These cities are known flood-prone areas based on historical data
+# --- Malaysia Flood-Prone States and Cities (6 per state) --- #
 flood_map = {
     "Johor": {
         "Johor Bahru": (1.4927, 103.7414),
@@ -55,141 +55,161 @@ flood_map = {
     }
 }
 
-# --- Sidebar Information & Emoji Legend --- #
+# --- Sidebar: Instructions + Emoji Legend --- #
 st.sidebar.markdown("""
 # 🇲🇾 Malaysia Flood Tracker  
 ### 📅 Forecast Interface  
 
-🔹 *Instructions*:  
-- Select *State* and *City*  
-- Click *Check Flood Risk*  
-- View forecast, charts, map  
+🔹 *Steps:*  
+1. Select *date, **state, and **city*  
+2. Click ✅ *Check*  
+3. View risk, forecast, maps & news  
 
-⚠ *Tips*:  
-- Prepare during monsoon  
-- Stay updated with alerts  
-- Avoid flood zones  
-
-📘 *Emoji Legend*:  
+📘 *Emoji Risk Legend:*  
 🟢 Low | 🟡 Moderate | 🟠 High | 🔴 Extreme  
+
+⚠ *Tips:*  
+- Stay safe during heavy rain  
+- Prepare emergency kit  
 """)
 
-# --- Page Title & Intro Text --- #
-st.title("🏞 Malaysia Flood Risk Forecast Dashboard")
-st.markdown("Real-time rainfall & flood-prone map for public safety & awareness.")
+# --- Main Title --- #
+st.title("🌧 Malaysia Flood Risk Forecast Dashboard")
+st.markdown("Live rainfall, flood zones, and safety information.")
 
-# --- User Selects State and City --- #
-col1, col2 = st.columns(2)
-with col1:
-    selected_state = st.selectbox("📍 Select State", list(flood_map.keys()))
-with col2:
+# --- Date Selection --- #
+col_date1, col_date2, col_date3 = st.columns(3)
+with col_date1:
+    selected_day = st.selectbox("📅 Day", list(range(1, 32)), index=datetime.now().day - 1)
+with col_date2:
+    selected_month = st.selectbox("🗓 Month", [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ], index=datetime.now().month - 1)
+with col_date3:
+    selected_year = st.selectbox("📆 Year", [datetime.now().year, datetime.now().year + 1])
+
+# --- Location Selection --- #
+col_loc1, col_loc2 = st.columns(2)
+with col_loc1:
+    selected_state = st.selectbox("🏞 Select State", list(flood_map.keys()))
+with col_loc2:
     selected_city = st.selectbox("🏘 Select City", list(flood_map[selected_state].keys()))
 
-# --- CHECK Button to Trigger Forecast --- #
+# --- Button to Trigger Forecast --- #
 if st.button("✅ Check Flood Risk"):
 
-    # --- Get Coordinates from Selected City --- #
+    # --- Coordinates for API Request --- #
     lat, lon = flood_map[selected_state][selected_city]
-
-    # --- API Request to WeatherAPI for 3-day Forecast --- #
-    url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=3&aqi=no&alerts=no"
+    url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=7&aqi=no&alerts=no"
     response = requests.get(url)
 
-    # --- If Response Successful --- #
     if response.status_code == 200:
         weather = response.json()
 
-        # --- Extract Forecast into DataFrame --- #
+        # --- Format Forecast Data --- #
         forecast_data = [
             {
                 "Date": day["date"],
                 "Rainfall (mm)": day["day"]["totalprecip_mm"],
+                "Avg Temp (°C)": day["day"]["avgtemp_c"],
+                "Humidity (%)": day["day"]["avghumidity"],
                 "Condition": day["day"]["condition"]["text"]
             }
             for day in weather["forecast"]["forecastday"]
         ]
         df = pd.DataFrame(forecast_data)
 
-        # --- Determine Risk Level Based on Today's Rainfall --- #
-        today_rain = df["Rainfall (mm)"][0]
+        # --- Flood Risk Evaluation by Rainfall --- #
+        today_rain = df["Rainfall (mm)"].iloc[0]
         if today_rain < 10:
             risk = "🟢 Low"
-        elif 10 <= today_rain < 30:
+        elif today_rain < 30:
             risk = "🟡 Moderate"
-        elif 30 <= today_rain < 60:
+        elif today_rain < 60:
             risk = "🟠 High"
         else:
             risk = "🔴 Extreme"
 
-        # --- Display Summary of Risk --- #
+        # --- Display Risk Info --- #
         st.success(f"""
         📌 *{selected_city}, {selected_state}*  
-        💧 Today's Rainfall: {today_rain} mm  
-        ⚠ *Flood Risk Level: {risk}*
+        📅 Selected Date: {selected_day} {selected_month} {selected_year}  
+        💧 Rainfall: {today_rain} mm  
+        ⚠ *Flood Risk: {risk}*
         """)
 
-        # --- Rainfall Charts: Bar, Line, Area --- #
-        st.subheader("📊 Rainfall Forecast (3 Days)")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown("*Bar Chart*")
+        # --- Charts Section --- #
+        st.subheader("📊 Weather Charts")
+
+        col_chart1, col_chart2, col_chart3 = st.columns(3)
+        with col_chart1:
+            st.markdown("*Rainfall (mm)* - Bar Chart")
             st.bar_chart(df.set_index("Date")["Rainfall (mm)"])
-        with c2:
-            st.markdown("*Line Chart*")
-            st.line_chart(df.set_index("Date")["Rainfall (mm)"])
-        with c3:
-            st.markdown("*Area Chart*")
-            st.area_chart(df.set_index("Date")["Rainfall (mm)"])
+        with col_chart2:
+            st.markdown("*Avg Temperature (°C)* - Line Chart")
+            st.line_chart(df.set_index("Date")["Avg Temp (°C)"])
+        with col_chart3:
+            st.markdown("*Humidity (%)* - Area Chart")
+            st.area_chart(df.set_index("Date")["Humidity (%)"])
 
         # --- Forecast Table --- #
-        st.subheader("📆 Detailed Forecast Table")
+        st.subheader("📆 7-Day Forecast Data Table")
         st.dataframe(df)
 
-        # --- Local City Flood Map --- #
-        st.subheader("📍 Flood Zone Map (Selected City)")
+        # --- Map: City Flood Zone --- #
+        st.subheader("📍 Local Flood Map")
         st.pydeck_chart(pdk.Deck(
             initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=10),
             layers=[
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=pd.DataFrame([{"lat": lat, "lon": lon}]),
-                    get_position='[lon, lat]',
-                    get_radius=7000,
-                    get_color='[255, 0, 0, 160]'
-                )
+                pdk.Layer("ScatterplotLayer",
+                          data=pd.DataFrame([{"lat": lat, "lon": lon}]),
+                          get_position='[lon, lat]',
+                          get_radius=7000,
+                          get_color='[255, 0, 0, 160]')
             ]
         ))
 
-        # --- National Risk Map for All Cities --- #
-        st.subheader("🌐 National Flood Risk Map")
-        all_coords = [
-            {"lat": coord[0], "lon": coord[1]}
-            for state in flood_map.values() for coord in state.values()
-        ]
-        st.pydeck_chart(pdk.Deck(
-            initial_view_state=pdk.ViewState(latitude=4.2, longitude=109.5, zoom=5),
-            layers=[
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=pd.DataFrame(all_coords),
-                    get_position='[lon, lat]',
-                    get_radius=5000,
-                    get_color='[255, 140, 0, 160]'
-                )
-            ]
-        ))
+        # --- Updated National Flood Risk Map (Color-coded by rainfall) --- #
+        st.subheader("🌐 National Flood Risk Overview (Color Zones)")
 
-        # --- Flood News Section with Links --- #
-        st.subheader("📰 Latest Flood News (Manual Source)")
-        st.markdown("""
-        - [🌊 Floods displace hundreds in Johor - The Star](https://www.thestar.com.my/news/nation/2023/12/10/floods-displace-hundreds-in-johor)
-        - [🚨 Flash floods hit parts of Selangor - Malaysiakini](https://www.malaysiakini.com/news/655432)
-        - [💦 Updates from Department of Irrigation and Drainage (JPS)](https://publicinfobanjir.water.gov.my/)
-        """)
+        city_risk_list = []
+        for state in flood_map:
+            for city, coord in flood_map[state].items():
+                city_url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={coord[0]},{coord[1]}&days=1&aqi=no&alerts=no"
+                resp = requests.get(city_url)
+                if resp.status_code == 200:
+                    rain = resp.json()["forecast"]["forecastday"][0]["day"]["totalprecip_mm"]
+                    # Determine risk level
+                    if rain < 10:
+                        color = [0, 255, 0, 160]  # 🟢
+                    elif rain < 30:
+                        color = [255, 255, 0, 160]  # 🟡
+                    elif rain < 60:
+                        color = [255, 165, 0, 160]  # 🟠
+                    else:
+                        color = [255, 0, 0, 160]  # 🔴
+                    city_risk_list.append({
+                        "city": city,
+                        "lat": coord[0],
+                        "lon": coord[1],
+                        "color": color
+                    })
 
-    else:
-        st.error("❌ Unable to retrieve weather data. Please check your API key or internet.")
-
-# --- Footer Credit --- #
-st.markdown("---")
-st.caption("📘 BVI1234 Technology System Programming II — Group VC24001 · VC24009 · VC24011")
+        # Plot risk map
+        if city_risk_list:
+            risk_df = pd.DataFrame(city_risk_list)
+            st.pydeck_chart(pdk.Deck(
+                initial_view_state=pdk.ViewState(latitude=4.2, longitude=109.5, zoom=5),
+                layers=[
+                    pdk.Layer(
+                        "ScatterplotLayer",
+                        data=risk_df,
+                        get_position='[lon, lat]',
+                        get_fill_color='color',
+                        get_radius=5000
+                    )
+                ]
+            ))
+        else:
+            st.warning("Unable to fetch national flood
