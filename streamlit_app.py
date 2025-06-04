@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import calendar
 
 # ------------- CONFIG -------------
@@ -36,22 +36,6 @@ state_city_coords = {
         "Kluang 🌊": [2.0305, 103.3169],
         "Pontian": [1.4856, 103.3895],
         "Segamat 🌊": [2.5143, 102.8105]
-    },
-    # Added more flood prone states & cities
-    "Kelantan": {
-        "Kota Bharu 🌊": [6.1257, 102.2388],
-        "Tumpat 🌊": [6.1701, 102.2063],
-        "Pasir Mas": [6.0933, 102.2429]
-    },
-    "Pahang": {
-        "Kuantan 🌊": [3.8076, 103.3262],
-        "Temerloh": [3.4387, 102.4201],
-        "Bera": [3.5658, 102.9143]
-    },
-    "Perak": {
-        "Ipoh 🌊": [4.5975, 101.0901],
-        "Taiping": [4.8540, 100.7399],
-        "Teluk Intan 🌊": [4.0111, 100.9453]
     }
 }
 
@@ -73,9 +57,6 @@ known_flood_events = {
     "Klang 🌊": ["2025-06-01"],
     "Johor Bahru 🌊": ["2025-05-28"],
     "George Town 🌊": ["2025-03-10"],
-    "Kota Bharu 🌊": ["2025-06-01"],
-    "Ipoh 🌊": ["2025-05-30"],
-    "Teluk Intan 🌊": ["2025-04-20"]
 }
 
 # ----------- UTILS -----------
@@ -128,9 +109,9 @@ def get_7day_forecast(city):
             data = res.json()
             forecast_list = []
             for day in data["forecast"]["forecastday"]:
-                date_str = day["date"]
-                rain = day["day"]["totalprecip_mm"]
-                forecast_list.append((date_str, rain))
+                date = day["date"]
+                total_rain = day["day"].get("totalprecip_mm", 0.0)
+                forecast_list.append((date, total_rain))
             return forecast_list
     except Exception as e:
         st.error(f"Error fetching forecast: {e}")
@@ -190,12 +171,10 @@ st.sidebar.info(flood_preparation_notes())
 st.title("🌧 FloodSight Malaysia")
 st.markdown("#### Real-time Flood Risk Forecast & Rainfall History for Malaysian Cities")
 
-# Location selection
 states = sorted(state_city_coords.keys())
 selected_state = st.selectbox("Select State", states)
 
 cities = sorted(state_city_coords.get(selected_state, {}).keys())
-
 if cities:
     selected_city = st.selectbox("Select City", cities)
     latitude, longitude = state_city_coords[selected_state][selected_city]
@@ -204,13 +183,14 @@ else:
     latitude = longitude = None
     st.warning("Please select a valid state and city.")
 
-# Date selection for rainfall history with fixed month selectbox
-months = [(i, calendar.month_name[i]) for i in range(1, 13)]
-selected_month_tuple = st.selectbox("Select Month", months, format_func=lambda x: x[1])
-selected_month = selected_month_tuple[0]
-selected_month_name = selected_month_tuple[1]
-
-selected_year = st.selectbox("Select Year", [2025, 2024, 2023])
+# Date selection for rainfall history
+col1, col2 = st.columns(2)
+with col1:
+    selected_year = st.selectbox("Select Year", [2025, 2024, 2023])
+with col2:
+    month_names = list(calendar.month_name)[1:]
+    selected_month_name = st.selectbox("Select Month", month_names)
+selected_month = month_names.index(selected_month_name) + 1
 
 if selected_city:
     tab1, tab2, tab3 = st.tabs(["Overview 🌡", "Rainfall History 📅", "Latest Flood News 📰"])
@@ -222,67 +202,67 @@ if selected_city:
 
             if weather:
                 st.success(f"Weather data for **{selected_city}** (as of {weather['time']})")
+
                 t1, t2, t3 = st.columns(3)
                 t1.metric("🌡 Temperature (°C)", weather["temperature"])
                 t2.metric("💧 Humidity (%)", weather["humidity"])
                 t3.metric("🌧 Rainfall (mm)", weather["rain"])
 
                 risk = estimate_risk(weather["rain"], weather["humidity"])
-                st.markdown(f"### Flood Risk Level")
+                st.markdown("### Flood Risk Level")
                 st.markdown(f'<div style="{risk_color(risk)}">{risk}</div>', unsafe_allow_html=True)
-
-                st.markdown("#### 7-Day Rainfall Forecast")
-                if forecast_7d:
-                    df_forecast = pd.DataFrame(forecast_7d, columns=["Date", "Rainfall (mm)"])
-                    df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
-                    st.bar_chart(df_forecast.set_index("Date")["Rainfall (mm)"])
-                else:
-                    st.info("7-day forecast data not available.")
 
                 st.markdown("#### City Location")
                 st.map(pd.DataFrame([[latitude, longitude]], columns=["lat", "lon"]), zoom=10)
+
+                # 7-day forecast line chart
+                if forecast_7d:
+                    st.markdown("### 7-Day Rainfall Forecast")
+                    df_forecast = pd.DataFrame(forecast_7d, columns=["Date", "Rainfall (mm)"])
+                    df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
+                    df_forecast.set_index("Date", inplace=True)
+                    st.line_chart(df_forecast["Rainfall (mm)"])
+                else:
+                    st.info("7-day forecast data not available.")
             else:
-                st.error("Failed to retrieve weather data. Please try again later.")
+                st.error("Unable to fetch weather data at the moment.")
 
     with tab2:
-        if selected_city:
-            st.markdown(f"### Daily Rainfall History - {selected_month_name} {selected_year}")
-            with st.spinner("Fetching rainfall data..."):
-                rainfall_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
+        st.markdown(f"### Daily Rainfall History - {selected_month_name} {selected_year}")
+        rainfall_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
+        if rainfall_data:
+            df_rain = pd.DataFrame(rainfall_data, columns=["Date", "Rainfall (mm)"])
+            df_rain["Date"] = pd.to_datetime(df_rain["Date"])
+            df_rain.set_index("Date", inplace=True)
 
-            if rainfall_data:
-                df_rain = pd.DataFrame(rainfall_data, columns=["Date", "Rainfall (mm)"])
-                df_rain["Date"] = pd.to_datetime(df_rain["Date"])
-                df_rain.set_index("Date", inplace=True)
+            st.markdown("#### Rainfall Bar Chart")
+            st.bar_chart(df_rain["Rainfall (mm)"])
 
-                # Add flood risk for each day based on rainfall
-                risk_list = []
-                for date_str, rain_mm in rainfall_data:
-                    risk_list.append({
-                        "Date": pd.to_datetime(date_str),
-                        "Rainfall (mm)": rain_mm,
-                        "Risk": get_risk_for_date(selected_city, date_str, rain_mm)
-                    })
+            # Risk table with color coding
+            risk_list = []
+            for date_str, rain_mm in rainfall_data:
+                risk_list.append({
+                    "Date": pd.to_datetime(date_str),
+                    "Rainfall (mm)": rain_mm,
+                    "Risk": get_risk_for_date(selected_city, date_str, rain_mm)
+                })
+            df_risk = pd.DataFrame(risk_list).set_index("Date")
 
-                df_risk = pd.DataFrame(risk_list).set_index("Date")
+            def color_risk(val):
+                if "High" in val:
+                    color = 'background-color: #ff4c4c; color: white; font-weight:bold;'
+                elif "Moderate" in val:
+                    color = 'background-color: #ffb347; color: black; font-weight:bold;'
+                else:
+                    color = 'background-color: #90ee90; color: black; font-weight:bold;'
+                return color
 
-                # Show bar chart for rainfall
-                st.bar_chart(df_risk["Rainfall (mm)"])
-
-                # Show table with risk info and color codes
-                def style_risk(r):
-                    if "High" in r:
-                        return "background-color:#FF4B4B; color:white;"
-                    elif "Moderate" in r:
-                        return "background-color:#FFA500; color:black;"
-                    else:
-                        return "background-color:#4CAF50; color:white;"
-
-                st.dataframe(
-                    df_risk.style.applymap(style_risk, subset=["Risk"]).format({"Rainfall (mm)": "{:.1f}"})
-                )
-            else:
-                st.info("No rainfall data available for this period.")
+            st.markdown("#### Flood Risk Table")
+            st.dataframe(
+                df_risk.style.applymap(color_risk, subset=["Risk"]).format({"Rainfall (mm)": "{:.1f}"})
+            )
+        else:
+            st.info("No rainfall data available for this period.")
 
     with tab3:
         st.markdown("### Latest Flood News")
@@ -290,9 +270,6 @@ if selected_city:
             st.markdown(f"**{news['date']}**: [{news['title']}]({news['link']})")
 
 else:
-    st.warning("Please select a city to continue.")
+    st.info("Select a state and city to begin.")
 
-# Footer
-st.markdown("---")
-st.markdown("Created by FloodSight Malaysia Team | Data via WeatherAPI.com | Stay Safe! 🌧️🌈")
-
+# ------------- END -------------
