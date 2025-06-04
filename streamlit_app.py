@@ -1,215 +1,197 @@
-# --- Import Libraries --- #
+# --------------------------------------------
+# 🇲🇾 Malaysia Flood Risk Forecast Dashboard
+# BVI1234 | Group VC24001 · VC24009 · VC24011
+# --------------------------------------------
+
 import streamlit as st
 import requests
 import pandas as pd
 import pydeck as pdk
 from datetime import datetime
 
-# --- Set Page Configuration --- #
-st.set_page_config(page_title="Malaysia Flood Risk Forecast", page_icon="🌧", layout="wide")
+# --------------------------------------------
+# 🎨 Page Setup
+# --------------------------------------------
+st.set_page_config(
+    page_title="🇲🇾 Malaysia Flood Risk Forecast",
+    page_icon="🌊",
+    layout="wide"
+)
 
-# --- API Key --- #
-API_KEY = "1468e5c2a4b24ce7a64140429250306"
-
-# --- Malaysia Flood-Prone States and Cities (6 per state) --- #
+# --------------------------------------------
+# 📍 City Coordinates (Flood-Prone Areas)
+# --------------------------------------------
 flood_map = {
-    "Johor": {
-        "Johor Bahru": (1.4927, 103.7414),
-        "Batu Pahat": (1.8544, 102.9325),
-        "Muar": (2.0442, 102.5689),
-        "Segamat": (2.5090, 102.8106),
-        "Kluang": (2.0324, 103.3185),
-        "Pontian": (1.4897, 103.3895)
-    },
-    "Kelantan": {
-        "Kota Bharu": (6.1254, 102.2381),
-        "Gua Musang": (4.8826, 101.9620),
-        "Pasir Mas": (6.0495, 102.1396),
-        "Tanah Merah": (5.8123, 102.1431),
-        "Tumpat": (6.1979, 102.1705),
-        "Bachok": (6.0718, 102.3937)
-    },
-    "Pahang": {
-        "Kuantan": (3.8077, 103.3260),
-        "Temerloh": (3.4515, 102.4179),
-        "Jerantut": (3.9368, 102.3626),
-        "Bentong": (3.5214, 101.9081),
-        "Raub": (3.7894, 101.8574),
-        "Pekan": (3.4833, 103.3990)
-    },
-    "Sarawak": {
-        "Kuching": (1.5535, 110.3593),
-        "Sibu": (2.2879, 111.8260),
-        "Bintulu": (3.1700, 113.0364),
-        "Miri": (4.3990, 113.9914),
-        "Kapit": (2.0164, 112.9368),
-        "Limbang": (4.7500, 115.0000)
-    },
     "Selangor": {
         "Shah Alam": (3.0738, 101.5183),
-        "Klang": (3.0333, 101.4500),
-        "Gombak": (3.2167, 101.6500),
-        "Hulu Langat": (3.0833, 101.8667),
-        "Petaling Jaya": (3.1073, 101.6067),
-        "Sabak Bernam": (3.6733, 100.9896)
+        "Klang": (3.0339, 101.4455),
+        "Kajang": (2.9935, 101.7871),
+        "Gombak": (3.2986, 101.7250),
+        "Puchong": (3.0250, 101.6167),
+        "Ampang": (3.1500, 101.7667)
+    },
+    "Johor": {
+        "Johor Bahru": (1.4927, 103.7414),
+        "Batu Pahat": (1.8500, 102.9333),
+        "Kluang": (2.0326, 103.3180),
+        "Muar": (2.0500, 102.5667),
+        "Kota Tinggi": (1.7333, 103.9000),
+        "Pontian": (1.4833, 103.3833)
+    },
+    "Kelantan": {
+        "Kota Bharu": (6.1333, 102.2500),
+        "Pasir Mas": (6.0500, 102.1333),
+        "Tumpat": (6.2000, 102.1667),
+        "Tanah Merah": (5.8167, 102.1500),
+        "Machang": (5.7667, 102.2167),
+        "Gua Musang": (4.8833, 101.9667)
+    },
+    "Pahang": {
+        "Kuantan": (3.8167, 103.3333),
+        "Temerloh": (3.4500, 102.4167),
+        "Jerantut": (3.9333, 102.3667),
+        "Bentong": (3.5167, 101.9000),
+        "Pekan": (3.4833, 103.4000),
+        "Raub": (3.8000, 101.8667)
+    },
+    "Sarawak": {
+        "Kuching": (1.5533, 110.3592),
+        "Sibu": (2.3000, 111.8167),
+        "Miri": (4.4000, 113.9833),
+        "Bintulu": (3.1667, 113.0333),
+        "Sri Aman": (1.2333, 111.4667),
+        "Limbang": (4.7500, 115.0000)
     }
 }
 
-# --- Sidebar: Instructions + Emoji Legend --- #
-st.sidebar.markdown("""
-# 🇲🇾 Malaysia Flood Tracker  
-### 📅 Forecast Interface  
-
-🔹 *Steps:*  
-1. Select *date, **state, and **city*  
-2. Click ✅ *Check*  
-3. View risk, forecast, maps & news  
-
-📘 *Emoji Risk Legend:*  
-🟢 Low | 🟡 Moderate | 🟠 High | 🔴 Extreme  
-
-⚠ *Tips:*  
-- Stay safe during heavy rain  
-- Prepare emergency kit  
-""")
-
-# --- Main Title --- #
+# --------------------------------------------
+# 📅 User Selections (State, City, Date)
+# --------------------------------------------
 st.title("🌧 Malaysia Flood Risk Forecast Dashboard")
-st.markdown("Live rainfall, flood zones, and safety information.")
 
-# --- Date Selection --- #
-col_date1, col_date2, col_date3 = st.columns(3)
-with col_date1:
-    selected_day = st.selectbox("📅 Day", list(range(1, 32)), index=datetime.now().day - 1)
-with col_date2:
-    selected_month = st.selectbox("🗓 Month", [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-    ], index=datetime.now().month - 1)
-with col_date3:
-    selected_year = st.selectbox("📆 Year", [datetime.now().year, datetime.now().year + 1])
+col1, col2, col3 = st.columns(3)
+with col1:
+    selected_state = st.selectbox("📍 Select State", list(flood_map.keys()))
+with col2:
+    selected_city = st.selectbox("🏙 Select City", list(flood_map[selected_state].keys()))
+with col3:
+    selected_date = st.date_input("📆 Select Date", datetime.today())
 
-# --- Location Selection --- #
-col_loc1, col_loc2 = st.columns(2)
-with col_loc1:
-    selected_state = st.selectbox("🏞 Select State", list(flood_map.keys()))
-with col_loc2:
-    selected_city = st.selectbox("🏘 Select City", list(flood_map[selected_state].keys()))
+lat, lon = flood_map[selected_state][selected_city]
 
-# --- Button to Trigger Forecast --- #
-if st.button("✅ Check Flood Risk"):
+# --------------------------------------------
+# 🌦 Weather Forecast API (7-day)
+# --------------------------------------------
+API_KEY = "1468e5c2a4b24ce7a64140429250306"
+url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=7&aqi=no&alerts=no"
+response = requests.get(url)
+weather = response.json() if response.status_code == 200 else None
 
-    # --- Coordinates for API Request --- #
-    lat, lon = flood_map[selected_state][selected_city]
-    url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=7&aqi=no&alerts=no"
-    response = requests.get(url)
+# --------------------------------------------
+# 🚦 Risk Evaluation Based on Rainfall
+# --------------------------------------------
+def risk_level(rain_mm):
+    if rain_mm < 20:
+        return "🟢 Low"
+    elif rain_mm < 50:
+        return "🟡 Moderate"
+    elif rain_mm < 100:
+        return "🟠 High"
+    else:
+        return "🔴 Extreme"
 
-    if response.status_code == 200:
-        weather = response.json()
+# --------------------------------------------
+# 🧭 Navigation Tabs
+# --------------------------------------------
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Charts", "📆 Forecast Table", "🗺 National Risk Map", "📰 Flood News"])
 
-        # --- Format Forecast Data --- #
-        forecast_data = [
-            {
+# --------------------------------------------
+# 📊 Tab 1: Chart Variety
+# --------------------------------------------
+with tab1:
+    st.header("📊 Rainfall, Temperature & Humidity Trends")
+    if weather:
+        forecast = weather["forecast"]["forecastday"]
+        data = []
+        for day in forecast:
+            data.append({
                 "Date": day["date"],
                 "Rainfall (mm)": day["day"]["totalprecip_mm"],
-                "Avg Temp (°C)": day["day"]["avgtemp_c"],
-                "Humidity (%)": day["day"]["avghumidity"],
-                "Condition": day["day"]["condition"]["text"]
-            }
-            for day in weather["forecast"]["forecastday"]
+                "Max Temp (°C)": day["day"]["maxtemp_c"],
+                "Humidity (%)": day["day"]["avghumidity"]
+            })
+        df = pd.DataFrame(data).set_index("Date")
+
+        st.subheader("🌧 Daily Rainfall")
+        st.bar_chart(df["Rainfall (mm)"])
+
+        st.subheader("🌡 Max Temperature")
+        st.line_chart(df["Max Temp (°C)"])
+
+        st.subheader("💧 Humidity Levels")
+        st.area_chart(df["Humidity (%)"])
+    else:
+        st.error("❌ Could not load weather data. Check your API or internet connection.")
+
+# --------------------------------------------
+# 📆 Tab 2: Forecast Table + Risk Level
+# --------------------------------------------
+with tab2:
+    st.header(f"📋 7-Day Weather Forecast for {selected_city}, {selected_state}")
+    if weather:
+        df["Risk Level"] = df["Rainfall (mm)"].apply(risk_level)
+        st.dataframe(df.reset_index())
+    else:
+        st.warning("⚠ Forecast data not available.")
+
+# --------------------------------------------
+# 🗺 Tab 3: National Risk Map
+# --------------------------------------------
+with tab3:
+    st.header("🗺 National Flood Risk Overview by City")
+
+    city_data = []
+    for state, cities in flood_map.items():
+        for city, coords in cities.items():
+            lat, lon = coords
+            api_url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=1&aqi=no&alerts=no"
+            resp = requests.get(api_url)
+            rain = resp.json()["forecast"]["forecastday"][0]["day"]["totalprecip_mm"] if resp.status_code == 200 else 0
+            level = risk_level(rain)
+            color = {
+                "🟢 Low": [0, 255, 0],
+                "🟡 Moderate": [255, 255, 0],
+                "🟠 High": [255, 165, 0],
+                "🔴 Extreme": [255, 0, 0]
+            }[level]
+            city_data.append({"lat": lat, "lon": lon, "color": color})
+
+    df_map = pd.DataFrame(city_data)
+    st.pydeck_chart(pdk.Deck(
+        initial_view_state=pdk.ViewState(latitude=4.5, longitude=109.5, zoom=5),
+        layers=[
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=df_map,
+                get_position='[lon, lat]',
+                get_color="color",
+                get_radius=6000
+            )
         ]
-        df = pd.DataFrame(forecast_data)
+    ))
 
-        # --- Flood Risk Evaluation by Rainfall --- #
-        today_rain = df["Rainfall (mm)"].iloc[0]
-        if today_rain < 10:
-            risk = "🟢 Low"
-        elif today_rain < 30:
-            risk = "🟡 Moderate"
-        elif today_rain < 60:
-            risk = "🟠 High"
-        else:
-            risk = "🔴 Extreme"
+# --------------------------------------------
+# 📰 Tab 4: Flood News Links
+# --------------------------------------------
+with tab4:
+    st.header("📰 Latest Malaysian Flood News")
+    st.markdown("- [🔗 Floods in Kelantan: Several Evacuated](https://www.thestar.com.my)")
+    st.markdown("- [🔗 Johor Faces Torrential Rain](https://www.nst.com.my)")
+    st.markdown("- [🔗 Klang Valley Monsoon Alert](https://www.malaymail.com)")
+    st.markdown("- [🔗 Flood Mitigation Projects Ongoing](https://www.bernama.com)")
 
-        # --- Display Risk Info --- #
-        st.success(f"""
-        📌 *{selected_city}, {selected_state}*  
-        📅 Selected Date: {selected_day} {selected_month} {selected_year}  
-        💧 Rainfall: {today_rain} mm  
-        ⚠ *Flood Risk: {risk}*
-        """)
-
-        # --- Charts Section --- #
-        st.subheader("📊 Weather Charts")
-
-        col_chart1, col_chart2, col_chart3 = st.columns(3)
-        with col_chart1:
-            st.markdown("*Rainfall (mm)* - Bar Chart")
-            st.bar_chart(df.set_index("Date")["Rainfall (mm)"])
-        with col_chart2:
-            st.markdown("*Avg Temperature (°C)* - Line Chart")
-            st.line_chart(df.set_index("Date")["Avg Temp (°C)"])
-        with col_chart3:
-            st.markdown("*Humidity (%)* - Area Chart")
-            st.area_chart(df.set_index("Date")["Humidity (%)"])
-
-        # --- Forecast Table --- #
-        st.subheader("📆 7-Day Forecast Data Table")
-        st.dataframe(df)
-
-        # --- Map: City Flood Zone --- #
-        st.subheader("📍 Local Flood Map")
-        st.pydeck_chart(pdk.Deck(
-            initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=10),
-            layers=[
-                pdk.Layer("ScatterplotLayer",
-                          data=pd.DataFrame([{"lat": lat, "lon": lon}]),
-                          get_position='[lon, lat]',
-                          get_radius=7000,
-                          get_color='[255, 0, 0, 160]')
-            ]
-        ))
-
-        # --- Updated National Flood Risk Map (Color-coded by rainfall) --- #
-        st.subheader("🌐 National Flood Risk Overview (Color Zones)")
-
-        city_risk_list = []
-        for state in flood_map:
-            for city, coord in flood_map[state].items():
-                city_url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={coord[0]},{coord[1]}&days=1&aqi=no&alerts=no"
-                resp = requests.get(city_url)
-                if resp.status_code == 200:
-                    rain = resp.json()["forecast"]["forecastday"][0]["day"]["totalprecip_mm"]
-                    # Determine risk level
-                    if rain < 10:
-                        color = [0, 255, 0, 160]  # 🟢
-                    elif rain < 30:
-                        color = [255, 255, 0, 160]  # 🟡
-                    elif rain < 60:
-                        color = [255, 165, 0, 160]  # 🟠
-                    else:
-                        color = [255, 0, 0, 160]  # 🔴
-                    city_risk_list.append({
-                        "city": city,
-                        "lat": coord[0],
-                        "lon": coord[1],
-                        "color": color
-                    })
-
-        # Plot risk map
-        if city_risk_list:
-            risk_df = pd.DataFrame(city_risk_list)
-            st.pydeck_chart(pdk.Deck(
-                initial_view_state=pdk.ViewState(latitude=4.2, longitude=109.5, zoom=5),
-                layers=[
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=risk_df,
-                        get_position='[lon, lat]',
-                        get_fill_color='color',
-                        get_radius=5000
-                    )
-                ]
-            ))
-        else:
-            st.warning("Unable to fetch national flood
+# --------------------------------------------
+# 📌 Footer
+# --------------------------------------------
+st.markdown("---")
+st.caption("🛠 Developed for BVI1234 | Group VC24001 · VC24009 · VC24011 · 2025")
