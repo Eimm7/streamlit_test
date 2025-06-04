@@ -39,7 +39,6 @@ state_city_coords = {
     }
 }
 
-# Latest flood news (could be linked to actual sources)
 latest_flood_news = [
     {
         "date": "2025-06-01",
@@ -53,13 +52,11 @@ latest_flood_news = [
     }
 ]
 
-# Known flood events by city and date (example, expand as needed)
 known_flood_events = {
     "Shah Alam 🌊": ["2025-06-01", "2025-04-15"],
     "Klang 🌊": ["2025-06-01"],
     "Johor Bahru 🌊": ["2025-05-28"],
     "George Town 🌊": ["2025-03-10"],
-    # Add more based on real historical flood data
 }
 
 # ----------- UTILS -----------
@@ -80,6 +77,20 @@ def get_weather(city):
     except Exception as e:
         st.error(f"Error fetching weather: {e}")
     return None
+
+def get_7_day_forecast(city):
+    try:
+        res = requests.get(
+            "http://api.weatherapi.com/v1/forecast.json",
+            params={"key": WEATHERAPI_KEY, "q": city, "days": 7}
+        )
+        if res.status_code == 200:
+            forecast_data = res.json()
+            forecast = forecast_data["forecast"]["forecastday"]
+            return [(day["date"], day["day"]["totalprecip_mm"]) for day in forecast]
+    except Exception as e:
+        st.error(f"Error fetching 7-day forecast: {e}")
+    return []
 
 def get_monthly_rainfall(city, year, month):
     days = calendar.monthrange(year, month)[1]
@@ -128,10 +139,8 @@ def risk_color(risk_level):
         return "background-color:#4CAF50; color:white; font-weight:bold; padding:5px; border-radius:5px;"
 
 def get_risk_for_date(city, date_str, rain_mm):
-    # If date is known flood event for the city, mark High risk with note
     if city in known_flood_events and date_str in known_flood_events[city]:
         return "🔴 High (Actual Flood Recorded)"
-    # Else use rainfall thresholds
     if rain_mm > 80:
         return "🔴 High"
     elif rain_mm > 40:
@@ -158,7 +167,6 @@ st.sidebar.info(flood_preparation_notes())
 st.title("🌧 FloodSight Malaysia")
 st.markdown("#### Real-time Flood Risk Forecast & Rainfall History for Malaysian Cities")
 
-# Location selection
 states = sorted(state_city_coords.keys())
 selected_state = st.selectbox("Select State", states)
 
@@ -172,7 +180,6 @@ else:
     latitude = longitude = None
     st.warning("Please select a valid state and city.")
 
-# Date selection for rainfall history
 col1, col2 = st.columns(2)
 with col1:
     selected_year = st.selectbox("Select Year", [2025, 2024, 2023])
@@ -187,7 +194,6 @@ if selected_city:
             weather = get_weather(selected_city)
             if weather:
                 st.success(f"Weather data for **{selected_city}** (as of {weather['time']})")
-                # Show metrics in columns
                 t1, t2, t3 = st.columns(3)
                 t1.metric("🌡 Temperature (°C)", weather["temperature"])
                 t2.metric("💧 Humidity (%)", weather["humidity"])
@@ -199,49 +205,77 @@ if selected_city:
 
                 st.markdown("#### City Location")
                 st.map(pd.DataFrame([[latitude, longitude]], columns=["lat", "lon"]), zoom=10)
-
             else:
                 st.error("Failed to retrieve weather data. Please try again later.")
 
     with tab2:
-        if selected_city:
-            st.markdown(f"### Daily Rainfall History for {selected_city} ({calendar.month_name[selected_month]} {selected_year})")
-            with st.spinner("Fetching rainfall data..."):
-                rainfall_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
+        st.markdown(f"### Daily Rainfall History for {selected_city} ({calendar.month_name[selected_month]} {selected_year})")
+        with st.spinner("Fetching rainfall data..."):
+            rainfall_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
 
-            if rainfall_data:
-                df_rain = pd.DataFrame(rainfall_data, columns=["Date", "Rainfall (mm)"])
-                df_rain["Date"] = pd.to_datetime(df_rain["Date"])
-                st.line_chart(df_rain.set_index("Date")["Rainfall (mm)"])
+        if rainfall_data:
+            df_rain = pd.DataFrame(rainfall_data, columns=["Date", "Rainfall (mm)"])
+            df_rain["Date"] = pd.to_datetime(df_rain["Date"])
+            st.line_chart(df_rain.set_index("Date")["Rainfall (mm)"])
 
-                st.markdown("#### Flood Risk History")
-                risk_list = []
-                for date, rain_mm in rainfall_data:
-                    risk_label = get_risk_for_date(selected_city, date, rain_mm)
-                    risk_list.append({"Date": date, "Rainfall (mm)": rain_mm, "Flood Risk": risk_label})
-                df_risk = pd.DataFrame(risk_list)
-                df_risk["Date"] = pd.to_datetime(df_risk["Date"]).dt.strftime("%Y-%m-%d")
+            st.markdown("#### Flood Risk History")
+            risk_list = []
+            for date, rain_mm in rainfall_data:
+                risk_label = get_risk_for_date(selected_city, date, rain_mm)
+                risk_list.append({"Date": date, "Rainfall (mm)": rain_mm, "Flood Risk": risk_label})
+            df_risk = pd.DataFrame(risk_list)
+            df_risk["Date"] = pd.to_datetime(df_risk["Date"]).dt.strftime("%Y-%m-%d")
 
-                def color_risk(val):
-                    if "High" in val:
-                        return 'background-color: #FF4B4B; color:white; font-weight:bold;'
-                    elif "Moderate" in val:
-                        return 'background-color: #FFA500; font-weight:bold;'
-                    else:
-                        return 'background-color: #4CAF50; color:white; font-weight:bold;'
+            def color_risk(val):
+                if "High" in val:
+                    return 'background-color: #FF4B4B; color:white; font-weight:bold;'
+                elif "Moderate" in val:
+                    return 'background-color: #FFA500; font-weight:bold;'
+                else:
+                    return 'background-color: #4CAF50; color:white; font-weight:bold;'
 
-                st.dataframe(df_risk.style.applymap(color_risk, subset=["Flood Risk"]), use_container_width=True)
-
-            else:
-                st.warning("No rainfall data available for this month.")
+            st.dataframe(df_risk.style.applymap(color_risk, subset=["Flood Risk"]), use_container_width=True)
+        else:
+            st.warning("No rainfall data available for this month.")
 
     with tab3:
         st.markdown("### Latest Flood News in Malaysia")
         for news in latest_flood_news:
             st.markdown(f"**{news['date']}** - [{news['title']}]({news['link']})")
 
-else:
-    st.info("Please select a city to start.")
+# ----------- NEW FEATURES -----------
+st.markdown("## 🔍 Additional Forecast Tools")
+
+forecast_tab, risk_tab = st.tabs(["📈 7-Day Rainfall Forecast", "🗺 High-Risk Cities Map"])
+
+with forecast_tab:
+    if selected_city:
+        st.markdown(f"### Rainfall Forecast for {selected_city} (Next 7 Days)")
+        with st.spinner("Loading forecast..."):
+            forecast = get_7_day_forecast(selected_city)
+        if forecast:
+            df_forecast = pd.DataFrame(forecast, columns=["Date", "Forecast Rainfall (mm)"])
+            df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
+            st.line_chart(df_forecast.set_index("Date")["Forecast Rainfall (mm)"])
+        else:
+            st.warning("No forecast data available.")
+
+with risk_tab:
+    st.markdown("### Map of High-Risk Cities 🌊")
+    high_risk_points = []
+    for state, cities in state_city_coords.items():
+        for city, coords in cities.items():
+            weather = get_weather(city)
+            if weather:
+                risk = estimate_risk(weather["rain"], weather["humidity"])
+                if "High" in risk:
+                    high_risk_points.append([*coords])
+
+    if high_risk_points:
+        st.map(pd.DataFrame(high_risk_points, columns=["lat", "lon"]), zoom=6)
+        st.success(f"{len(high_risk_points)} high-risk cities detected and shown on map.")
+    else:
+        st.info("No high-risk cities detected at the moment.")
 
 # ----------- FOOTER -----------
 st.markdown("---")
@@ -252,4 +286,3 @@ Made with ❤️ by FloodSight Team | Data source: WeatherAPI.com
 </div>
 """, unsafe_allow_html=True
 )
-
