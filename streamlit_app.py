@@ -24,7 +24,6 @@ state_city_coords = {
         "Setapak 🌊": [3.1979, 101.7146],
         "Cheras 🌊": [3.0723, 101.7405]
     },
-    # (other states as before)
     "Penang": {
         "George Town 🌊": [5.4164, 100.3327],
         "Bukit Mertajam": [5.3510, 100.4409],
@@ -37,10 +36,10 @@ state_city_coords = {
         "Kluang 🌊": [2.0305, 103.3169],
         "Pontian": [1.4856, 103.3895],
         "Segamat 🌊": [2.5143, 102.8105]
-    },
-    # add other states as needed
+    }
 }
 
+# Latest flood news (could be linked to actual sources)
 latest_flood_news = [
     {
         "date": "2025-06-01",
@@ -53,6 +52,15 @@ latest_flood_news = [
         "link": "https://example.com/news/johor-flood-2025"
     }
 ]
+
+# Known flood events by city and date (example, expand as needed)
+known_flood_events = {
+    "Shah Alam 🌊": ["2025-06-01", "2025-04-15"],
+    "Klang 🌊": ["2025-06-01"],
+    "Johor Bahru 🌊": ["2025-05-28"],
+    "George Town 🌊": ["2025-03-10"],
+    # Add more based on real historical flood data
+}
 
 # ----------- UTILS -----------
 def get_weather(city):
@@ -69,8 +77,8 @@ def get_weather(city):
                 "rain": data["current"].get("precip_mm", 0),
                 "time": data["location"]["localtime"]
             }
-    except:
-        pass
+    except Exception as e:
+        st.error(f"Error fetching weather: {e}")
     return None
 
 def get_monthly_rainfall(city, year, month):
@@ -104,12 +112,12 @@ def estimate_risk(rain, humidity):
 
 def flood_preparation_notes():
     return """
-    - Secure important documents in waterproof bags.
-    - Prepare emergency kit (food, water, medicine).
-    - Know evacuation routes & nearest shelters.
-    - Keep devices charged.
-    - Monitor local news & alerts.
-    """
+- Secure important documents in waterproof bags.
+- Prepare emergency kit (food, water, medicine).
+- Know evacuation routes & nearest shelters.
+- Keep devices charged.
+- Monitor local news & alerts.
+"""
 
 def risk_color(risk_level):
     if "High" in risk_level:
@@ -119,33 +127,42 @@ def risk_color(risk_level):
     else:
         return "background-color:#4CAF50; color:white; font-weight:bold; padding:5px; border-radius:5px;"
 
+def get_risk_for_date(city, date_str, rain_mm):
+    # If date is known flood event for the city, mark High risk with note
+    if city in known_flood_events and date_str in known_flood_events[city]:
+        return "🔴 High (Actual Flood Recorded)"
+    # Else use rainfall thresholds
+    if rain_mm > 80:
+        return "🔴 High"
+    elif rain_mm > 40:
+        return "🟠 Moderate"
+    else:
+        return "🟢 Low"
+
 # ----------- SIDEBAR -----------
 st.sidebar.title("FloodSight Malaysia")
 st.sidebar.markdown("### How to use this app:")
 st.sidebar.markdown(
     """
-    1. Select your **State** and **City**.
-    2. Pick the **Year** and **Month** for rainfall history.
-    3. Click **Check Flood Risk** to get the latest weather and flood risk.
-    4. View daily rainfall and flood risk history.
-    5. Read latest flood news to stay informed.
-    """
+1. Select your **State** and **City**.
+2. Pick the **Year** and **Month** for rainfall history.
+3. Click **Check Flood Risk** to get the latest weather and flood risk.
+4. View daily rainfall and flood risk history.
+5. Read latest flood news to stay informed.
+"""
 )
 st.sidebar.markdown("### 💧 Flood Preparedness Tips")
 st.sidebar.info(flood_preparation_notes())
 
 # ----------- MAIN -----------
 st.title("🌧 FloodSight Malaysia")
-st.markdown("#### Realtime Flood Risk Forecast & Rainfall History for Malaysian Cities")
+st.markdown("#### Real-time Flood Risk Forecast & Rainfall History for Malaysian Cities")
 
 # Location selection
 states = sorted(state_city_coords.keys())
 selected_state = st.selectbox("Select State", states)
 
-if selected_state in state_city_coords:
-    cities = sorted(state_city_coords[selected_state].keys())
-else:
-    cities = []
+cities = sorted(state_city_coords.get(selected_state, {}).keys())
 
 if cities:
     selected_city = st.selectbox("Select City", cities)
@@ -200,13 +217,8 @@ if selected_city:
                 st.markdown("#### Flood Risk History")
                 risk_list = []
                 for date, rain_mm in rainfall_data:
-                    if rain_mm > 80:
-                        level = "🔴 High"
-                    elif rain_mm > 40:
-                        level = "🟠 Moderate"
-                    else:
-                        level = "🟢 Low"
-                    risk_list.append({"Date": date, "Rainfall (mm)": rain_mm, "Flood Risk": level})
+                    risk_label = get_risk_for_date(selected_city, date, rain_mm)
+                    risk_list.append({"Date": date, "Rainfall (mm)": rain_mm, "Flood Risk": risk_label})
                 df_risk = pd.DataFrame(risk_list)
                 df_risk["Date"] = pd.to_datetime(df_risk["Date"]).dt.strftime("%Y-%m-%d")
 
@@ -235,8 +247,8 @@ else:
 st.markdown("---")
 st.markdown(
     """
-    <div style="text-align:center; font-size:12px; color:gray;">
-    Made with ❤️ by FloodSight Team | Data source: WeatherAPI.com
-    </div>
-    """, unsafe_allow_html=True
+<div style="text-align:center; font-size:12px; color:gray;">
+Made with ❤️ by FloodSight Team | Data source: WeatherAPI.com
+</div>
+""", unsafe_allow_html=True
 )
