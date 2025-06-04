@@ -8,14 +8,7 @@ import calendar
 st.set_page_config(page_title="FloodSight Malaysia", layout="wide")
 WEATHERAPI_KEY = "1468e5c2a4b24ce7a64140429250306"
 
-# ---------- HEADER ----------
-st.title("🌧 FloodSight Malaysia")
-st.markdown("### Realtime Flood Risk Forecast for Malaysian Cities")
-st.markdown(
-    "Note: Cities with 🌊 symbol are known to be flood-prone areas."
-)
-
-# ---------- FLOOD-PRONE CITIES BY STATE ----------
+# ---------- DATA ----------
 state_city_coords = {
     "Selangor": {
         "Shah Alam 🌊": [3.0738, 101.5183],
@@ -108,42 +101,13 @@ state_city_coords = {
     }
 }
 
-# ---------- FLOOD RISK KNOWN EVENTS ----------
 known_flood_events = {
     "2025-06-01": ["Kelantan 🌊", "Kota Bharu 🌊", "Pasir Mas 🌊"],
     "2025-05-28": ["Kuala Lumpur 🌊"],
     "2025-04-15": ["Kelantan 🌊"],
 }
 
-# ---------- USER INPUT ----------
-st.markdown("#### 🏙 Select Location")
-selected_state = st.selectbox("State", sorted(state_city_coords.keys()))
-# Defensive: If state has no cities (unlikely), handle gracefully
-cities = sorted(state_city_coords.get(selected_state, {}).keys())
-if not cities:
-    st.error(f"No cities found for state {selected_state}")
-    st.stop()
-selected_city = st.selectbox("City", cities)
-latitude, longitude = state_city_coords[selected_state][selected_city]
-
-# ---------- SHOW MAP ----------
-st.markdown("#### 🗺 City Location on Map")
-map_df = pd.DataFrame([[latitude, longitude]], columns=["lat", "lon"])
-st.map(map_df, zoom=10)
-
-# ---------- DATE SELECT ----------
-st.markdown("#### 📅 Select Date for Rainfall History and Flood Risk")
-selected_date = st.date_input(
-    "Date",
-    value=datetime.today(),
-    min_value=datetime(2023, 1, 1),
-    max_value=datetime.today(),
-)
-
-selected_date_str = selected_date.strftime("%Y-%m-%d")
-
 # ---------- HELPERS ----------
-
 def get_weather(city):
     try:
         res = requests.get(
@@ -159,7 +123,7 @@ def get_weather(city):
                 "rain": data["current"].get("precip_mm", 0),
                 "time": data["location"]["localtime"],
             }
-    except Exception as e:
+    except Exception:
         return None
     return None
 
@@ -172,10 +136,9 @@ def get_daily_rainfall(city, date_str):
         )
         if res.status_code == 200:
             data = res.json()
-            # Sum hourly precipitations
             mm = sum(h["precip_mm"] for h in data["forecast"]["forecastday"][0]["hour"])
             return mm
-    except Exception as e:
+    except Exception:
         return None
     return None
 
@@ -197,7 +160,6 @@ def flood_preparation_notes():
 """
 
 def get_latest_flood_news():
-    # Hardcoded example flood news data; replace with API if available
     return [
         {
             "date": "2025-06-01",
@@ -216,76 +178,163 @@ def get_latest_flood_news():
         }
     ]
 
-# ---------- MAIN LOGIC ----------
-
-st.markdown("---")
-if st.button("🔍 Check Flood Risk"):
-
-    weather = get_weather(selected_city)
-    if weather is None:
-        st.error("❌ Failed to retrieve current weather data.")
-    else:
-        st.success("✅ Current weather data retrieved successfully.")
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("🌡 Temperature", f"{weather['temperature']} °C")
-        col2.metric("💧 Humidity", f"{weather['humidity']}%")
-        col3.metric("🌧 Rainfall (Today)", f"{weather['rain']} mm")
-        st.caption(f"🕒 Data time: {weather['time']}")
-
-        # Get rainfall for selected date (history)
-        daily_rain = get_daily_rainfall(selected_city, selected_date_str)
-        if daily_rain is None:
-            daily_rain = 0.0
-
-        # Flood risk override for known flood events:
-        if (
-            selected_date_str in known_flood_events
-            and selected_city in known_flood_events[selected_date_str]
-        ):
-            risk = "🔴 High (Known Flood Date)"
-        else:
-            risk = estimate_risk(daily_rain, weather["humidity"])
-
-        # Sidebar flood risk and notes
-        st.sidebar.header("⚠ Flood Risk Level")
-        st.sidebar.markdown(f"## {risk}")
-        st.sidebar.markdown(flood_preparation_notes())
-
-        # Weather summary table
-        df = pd.DataFrame(
-            [
-                {
-                    "City": selected_city,
-                    "Date": selected_date.strftime("%d/%m/%Y"),
-                    "Rainfall (mm)": daily_rain,
-                    "Humidity (%)": weather["humidity"],
-                    "Temperature (°C)": weather["temperature"],
-                    "Flood Risk": risk,
-                }
-            ]
+def get_7_day_forecast(city):
+    """Return a list of dicts with date, rainfall_mm, humidity, temperature for next 7 days"""
+    forecast_data = []
+    try:
+        res = requests.get(
+            "http://api.weatherapi.com/v1/forecast.json",
+            params={"key": WEATHERAPI_KEY, "q": city, "days": 7},
+            timeout=10,
         )
-        st.markdown("#### 📊 Weather Summary")
-        st.dataframe(df, use_container_width=True)
+        if res.status_code == 200:
+            data = res.json()
+            for day in data["forecast"]["forecastday"]:
+                date = day["date"]
+                day_data = day["day"]
+                forecast_data.append({
+                    "Date": datetime.strptime(date, "%Y-%m-%d").strftime("%d/%m/%Y"),
+                    "Rainfall (mm)": day_data["totalprecip_mm"],
+                    "Humidity (%)": round(day_data["avghumidity"], 1),
+                    "Temperature (°C)": round(day_data["avgtemp_c"], 1),
+                    "Risk": estimate_risk(day_data["totalprecip_mm"], day_data["avghumidity"])
+                })
+    except Exception:
+        pass
+    return forecast_data
 
-        # Bar chart of metrics for selected date
-        chart_df = pd.DataFrame(
-            {
-                "Metric": ["Temperature", "Humidity", "Rainfall"],
-                "Value": [weather["temperature"], weather["humidity"], daily_rain],
-            }
-        ).set_index("Metric")
-        st.bar_chart(chart_df)
+def highlight_high_risk_cities(date_str):
+    """Return list of all cities that are high risk or known flood events on date_str"""
+    high_risk_cities = []
+    for state, cities in state_city_coords.items():
+        for city in cities:
+            # Check known flood events
+            if date_str in known_flood_events and city in known_flood_events[date_str]:
+                high_risk_cities.append(city)
+                continue
+            # Otherwise check weather history
+            rain = get_daily_rainfall(city, date_str)
+            weather = get_weather(city)
+            humidity = weather["humidity"] if weather else 0
+            if rain is not None and humidity is not None:
+                risk = estimate_risk(rain, humidity)
+                if "High" in risk:
+                    high_risk_cities.append(city)
+    return high_risk_cities
 
-        # Show latest flood news below
-        st.markdown("#### 📰 Latest Flood News in Malaysia")
-        news = get_latest_flood_news()
-        for item in news:
-            st.markdown(
-                f"**{datetime.strptime(item['date'], '%Y-%m-%d').strftime('%d/%m/%Y')}** - "
-                f"**{item['location']}**: {item['details']}"
-            )
+# ---------- APP LAYOUT ----------
 
-# ---------- FOOTER ----------
+st.title("🌧 FloodSight Malaysia")
+st.markdown("### Realtime Flood Risk Forecast for Malaysian Cities")
+st.markdown("Note: Cities with 🌊 symbol are known to be flood-prone areas.")
+
+# Sidebar for controls
+st.sidebar.header("🔍 Select Location & Date")
+selected_state = st.sidebar.selectbox("State", sorted(state_city_coords.keys()))
+cities = sorted(state_city_coords.get(selected_state, {}).keys())
+selected_city = st.sidebar.selectbox("City", cities) if cities else None
+selected_date = st.sidebar.date_input(
+    "Date",
+    value=datetime.today(),
+    min_value=datetime(2023, 1, 1),
+    max_value=datetime.today()
+)
+selected_date_str = selected_date.strftime("%Y-%m-%d")
+
+if not selected_city:
+    st.error(f"No cities found for state {selected_state}")
+    st.stop()
+
+latitude, longitude = state_city_coords[selected_state][selected_city]
+
+st.markdown("#### 🗺 City Location on Map")
+map_df = pd.DataFrame([[latitude, longitude]], columns=["lat", "lon"])
+st.map(map_df, zoom=10)
+
+if st.sidebar.button("🔎 Check Flood Risk"):
+
+    with st.spinner("Fetching current weather and historical data..."):
+        weather = get_weather(selected_city)
+        if weather is None:
+            st.error("❌ Failed to retrieve current weather data.")
+        else:
+            daily_rain = get_daily_rainfall(selected_city, selected_date_str)
+            if daily_rain is None:
+                daily_rain = 0.0
+
+            # Flood risk override for known flood events:
+            if (selected_date_str in known_flood_events and selected_city in known_flood_events[selected_date_str]):
+                risk = "🔴 High (Known Flood Event)"
+            else:
+                risk = estimate_risk(daily_rain, weather["humidity"])
+
+            st.markdown(f"### Weather in {selected_city} on {selected_date.strftime('%d %b %Y')}")
+            st.write(f"- Temperature: {weather['temperature']} °C")
+            st.write(f"- Humidity: {weather['humidity']} %")
+            st.write(f"- Rainfall: {daily_rain} mm")
+            st.markdown(f"**Flood Risk Level:** {risk}")
+
+            st.markdown("---")
+            st.markdown("### 7-Day Rainfall Forecast & Flood Risk")
+            forecast = get_7_day_forecast(selected_city)
+            if forecast:
+                df_forecast = pd.DataFrame(forecast)
+                st.dataframe(df_forecast.style.applymap(
+                    lambda v: 'background-color: #FFCCCC' if ("High" in str(v)) else '',
+                    subset=["Risk"]
+                ))
+            else:
+                st.info("Forecast data not available.")
+
+            st.markdown("---")
+            st.markdown("### Flood Risk Alert Across All Cities for Selected Date")
+            high_risk_cities = highlight_high_risk_cities(selected_date_str)
+            if high_risk_cities:
+                st.warning(f"Cities at high flood risk on {selected_date.strftime('%d %b %Y')}:")
+                for c in high_risk_cities:
+                    st.write(f"- {c}")
+            else:
+                st.info(f"No high risk cities detected on {selected_date.strftime('%d %b %Y')}.")
+
+# User manual in expander
+with st.expander("🛈 How to Use FloodSight Malaysia - User Manual"):
+    st.markdown("""
+    Welcome to **FloodSight Malaysia**! Here's how to use this app:
+
+    1. **Select a State and City:**  
+       Use the sidebar dropdowns to pick a Malaysian state and city. Cities with a 🌊 symbol are known flood-prone areas.
+
+    2. **Select a Date:**  
+       Choose a date (default is today). You can check flood risk for any day from 1 Jan 2023 to today.
+
+    3. **Check Flood Risk:**  
+       Click the "Check Flood Risk" button to fetch current weather and historical rainfall data for your city and date.
+
+    4. **Interpret the Results:**  
+       - The app shows temperature, humidity, and rainfall for the selected city and date.  
+       - Flood risk levels are estimated as Low (🟢), Moderate (🟠), or High (🔴).  
+       - High risk means heavy rain and high humidity, indicating potential flooding.
+
+    5. **7-Day Forecast:**  
+       See the upcoming 7-day rainfall, temperature, humidity, and flood risk forecast for your selected city.
+
+    6. **Flood Risk Alert:**  
+       Check a list of all Malaysian cities currently predicted to be at high flood risk on the chosen date.
+
+    7. **City Location Map:**  
+       View your selected city on the map for quick geographic context.
+
+    8. **Safety Tips:**  
+       - Prepare emergency supplies and know evacuation routes.  
+       - Avoid traveling during flood warnings.  
+       - Stay tuned to official news for updates.
+
+    **Note:**  
+    Data comes from WeatherAPI and known flood event records. Accuracy depends on weather data availability and API response.
+
+    Thank you for using FloodSight Malaysia — stay safe and prepared!
+    """)
+
+# Footer
 st.markdown("---")
-st.caption("© 2025 FloodSight Malaysia | Data sourced from WeatherAPI and local flood reports")
+st.markdown("Made with ❤️ by FloodSight Malaysia Team. Data from WeatherAPI.com")
