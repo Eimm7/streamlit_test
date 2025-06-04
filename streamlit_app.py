@@ -1,65 +1,77 @@
-# Malaysia FloodSight+ Dashboard
-# Developed for BVI1234 - Technology System Programming II
-# Enhanced Layout Version
+# Malaysia Flood Risk Forecast Dashboard
+# New Layout - Created for BVI1234 - Technology System Programming II
+# Includes bar, line, and area charts + refreshed layout
 
 import streamlit as st
 import requests
 import pandas as pd
 import pydeck as pdk
 
-# --- Page Config --- #
+# --- Page Configuration --- #
 st.set_page_config(
-    page_title="FloodSight+ Malaysia",
-    page_icon="🌊",
+    page_title="Malaysia Flood Risk Forecast",
+    page_icon="🌧️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
-# --- Sidebar Redesign --- #
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/6/63/Flag_of_Malaysia.svg", use_column_width=True)
-st.sidebar.title("FloodSight+ Malaysia")
+# --- Sidebar Content --- #
 st.sidebar.markdown("""
-### 🌧️ Real-time Flood Risk Forecast
-#### Stay safe. Stay informed.
+# 🇲🇾 Malaysia Flood Dashboard
+### 📅 Real-Time Forecast Interface
 
-**Instructions:**
-- Choose a **State** and **City**.
-- View **rainfall forecast** and **risk maps**.
+**🔹 Instructions:**
+- Select your **State** and **City**.
+- View 7-day **rainfall forecast**, **charts**, and **maps**.
 
-**Emergency Tips:**
-- Prepare emergency kit.
-- Avoid flood-prone areas.
-- Stay tuned to updates.
+**⚠️ Tips:**
+- Be aware during monsoon season.
+- Keep an emergency kit ready.
+- Stay updated with alerts.
+
+---
+**Emoji Legend:**
+- 🇲🇾 — Malaysia Flag (contextual branding)
+- 📅 — Calendar/Forecast tool
+- 🔹 — Sidebar steps/instructions
+- ⚠️ — Emergency advice section
+- 📊 — Charts tab (rainfall visuals)
+- 📆 — Table tab (data breakdown)
+- 🌍 — Maps tab (visualizing locations)
+- 🔸/🔹 — Local/National indicators
 """)
 
-# --- Title and Intro --- #
+# --- Flood Map Dictionary (must be defined externally or above this block) --- #
+# Example: flood_map = {"State": {"City": (lat, lon), ...}, ...}
+
+# --- Main Layout --- #
+st.title("Malaysia Flood Risk Forecast Dashboard 🌇")
 st.markdown("""
-# 🌇 FloodSight+ Malaysia 
-### Real-time Rainfall & Flood Risk Forecast Dashboard
+Real-time rainfall tracking and flood-prone mapping for Malaysian states.
+Built to promote public awareness and safety.
 """)
 
-# --- State/City Selectors --- #
-col_select1, col_select2 = st.columns([2, 3])
-with col_select1:
-    selected_state = st.selectbox("Select Malaysian State", list(flood_map.keys()))
-with col_select2:
-    selected_city = st.selectbox("Select Flood-prone City", list(flood_map[selected_state].keys()))
+col1, col2 = st.columns([1, 3])
+with col1:
+    selected_state = st.selectbox("Select State", list(flood_map.keys()))
+with col2:
+    selected_city = st.selectbox("Select City", list(flood_map[selected_state].keys()))
 
 lat, lon = flood_map[selected_state][selected_city]
 
-# --- WeatherAPI Fetch --- #
+# --- Fetch Weather Data from WeatherAPI --- #
 API_KEY = "1468e5c2a4b24ce7a64140429250306"
 url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=7&aqi=no&alerts=no"
-res = requests.get(url)
-weather = res.json() if res.status_code == 200 else None
+response = requests.get(url)
+weather = response.json() if response.status_code == 200 else None
 
-# --- Tabs Layout --- #
-tab1, tab2 = st.tabs(["📈 Rainfall Forecast", "🗺️ Flood Risk Maps"])
+# --- Tabs for Navigation --- #
+tab1, tab2, tab3 = st.tabs(["📊 Rainfall Charts", "📆 Forecast Table", "🌍 Flood Risk Maps"])
 
-# --- Tab 1: Rainfall Forecast --- #
+# --- Tab 1: Visual Charts --- #
 with tab1:
+    st.subheader(f"Rainfall Chart for {selected_city}, {selected_state}")
     if weather:
-        st.success(f"7-Day Rainfall Forecast for {selected_city}, {selected_state}")
         forecast_data = [
             {
                 "Date": day["date"],
@@ -68,30 +80,43 @@ with tab1:
             }
             for day in weather["forecast"]["forecastday"]
         ]
-        df = pd.DataFrame(forecast_data)
+        df = pd.DataFrame(forecast_data).set_index("Date")
 
-        chart_col, table_col = st.columns(2)
-        with chart_col:
-            st.bar_chart(df.set_index("Date")["Rainfall (mm)"])
-            st.line_chart(df.set_index("Date")["Rainfall (mm)"])
-        with table_col:
-            st.dataframe(df, use_container_width=True)
+        chart_col1, chart_col2, chart_col3 = st.columns(3)
+        with chart_col1:
+            st.markdown("**Bar Chart**")
+            st.bar_chart(df["Rainfall (mm)"])
+        with chart_col2:
+            st.markdown("**Line Chart**")
+            st.line_chart(df["Rainfall (mm)"])
+        with chart_col3:
+            st.markdown("**Area Chart**")
+            st.area_chart(df["Rainfall (mm)"])
     else:
-        st.error("Unable to load weather data. Please check your connection or API key.")
+        st.error("Weather data unavailable. Check API or internet.")
 
-# --- Tab 2: Flood Maps --- #
+# --- Tab 2: Table View --- #
 with tab2:
-    loc_col, nation_col = st.columns(2)
-    with loc_col:
-        st.markdown("#### 📍 Selected City Map")
+    st.subheader(f"7-Day Rainfall Forecast for {selected_city}, {selected_state}")
+    if weather:
+        st.table(df.reset_index())
+    else:
+        st.warning("Could not load table data.")
+
+# --- Tab 3: Map View --- #
+with tab3:
+    map1, map2 = st.columns(2)
+
+    with map1:
+        st.markdown("### 🔹 City Flood Zone")
         st.pydeck_chart(pdk.Deck(
             initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=10),
             layers=[pdk.Layer("ScatterplotLayer", data=pd.DataFrame([{"lat": lat, "lon": lon}]),
                                get_position='[lon, lat]', get_radius=6000, get_color='[255, 0, 0, 160]')]
         ))
 
-    with nation_col:
-        st.markdown("#### 🌐 National Flood Risk Map")
+    with map2:
+        st.markdown("### 🔸 National Flood Risk Overview")
         all_coords = [
             {"lat": v[0], "lon": v[1]}
             for state in flood_map.values() for v in state.values()
@@ -104,4 +129,4 @@ with tab2:
 
 # --- Footer --- #
 st.markdown("---")
-st.caption("FloodSight+ Malaysia | BVI1234 | Created by VC24001 · VC24009 · VC24011")
+st.caption("Malaysia Flood Forecast | BVI1234 | Group VC24001 · VC24009 · VC24011")
