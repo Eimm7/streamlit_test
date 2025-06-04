@@ -1,6 +1,6 @@
 # Malaysia Flood Risk Forecast Dashboard
 # New Layout - Created for BVI1234 - Technology System Programming II
-# Includes bar, line, and area charts + refreshed layout
+
 
 import streamlit as st
 import requests
