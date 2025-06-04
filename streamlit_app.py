@@ -3,16 +3,15 @@ import requests
 import pandas as pd
 from datetime import datetime
 import calendar
+import time
 
-# ---------- CONFIG ----------
-st.set_page_config(page_title="FloodSight Malaysia", layout="wide")
+# --- Config ---
+st.set_page_config(page_title="🌧 FloodSight Malaysia", layout="wide", page_icon="🌊")
+
+# API key for WeatherAPI (replace if needed)
 WEATHERAPI_KEY = "1468e5c2a4b24ce7a64140429250306"
 
-# ---------- HEADER ----------
-st.title("🌧 FloodSight Malaysia")
-st.markdown("### Realtime Flood Risk Forecast for Malaysian Cities")
-
-# ---------- FLOOD-PRONE CITIES BY STATE ----------
+# --- Flood-prone cities with coords ---
 state_city_coords = {
     "Selangor": {
         "Shah Alam 🌊": [3.0738, 101.5183],
@@ -105,58 +104,48 @@ state_city_coords = {
     }
 }
 
-# ---------- USER INPUT ----------
-st.markdown("#### 🏙 Select Location")
-selected_state = st.selectbox("State", sorted(state_city_coords.keys()))
-selected_city = st.selectbox("City", sorted(state_city_coords[selected_state].keys()))
-latitude, longitude = state_city_coords[selected_state][selected_city]
+# --- Functions ---
 
-# ---------- SHOW MAP ----------
-st.markdown("#### 🗺 City Location on Map")
-map_df = pd.DataFrame([[latitude, longitude]], columns=["lat", "lon"])
-st.map(map_df, zoom=10)
-
-# ---------- SELECT MONTH/YEAR ----------
-st.markdown("#### 📅 Select Month for Rainfall History")
-selected_year = st.selectbox("Year", [2025, 2024, 2023])
-selected_month = st.selectbox("Month", range(1, 13), format_func=lambda m: calendar.month_name[m])
-
-# ---------- FUNCTIONS ----------
 def get_weather(city):
     try:
-        res = requests.get("http://api.weatherapi.com/v1/current.json", params={"key": WEATHERAPI_KEY, "q": city})
-        if res.status_code == 200:
-            data = res.json()
-            return {
-                "temperature": data["current"]["temp_c"],
-                "humidity": data["current"]["humidity"],
-                "rain": data["current"].get("precip_mm", 0),
-                "time": data["location"]["localtime"]
-            }
-    except:
+        url = "http://api.weatherapi.com/v1/current.json"
+        params = {"key": WEATHERAPI_KEY, "q": city}
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        current = data["current"]
+        location = data["location"]
+        return {
+            "temperature": current["temp_c"],
+            "humidity": current["humidity"],
+            "rain": current.get("precip_mm", 0),
+            "time": location["localtime"]
+        }
+    except Exception as e:
+        st.error(f"Error fetching weather: {e}")
         return None
-    return None
 
 def get_monthly_rainfall(city, year, month):
     days = calendar.monthrange(year, month)[1]
-    daily_rainfall = []
-
+    rain_data = []
+    progress_bar = st.progress(0)
     for day in range(1, days + 1):
         date_str = f"{year}-{month:02d}-{day:02d}"
         try:
-            res = requests.get(
-                "http://api.weatherapi.com/v1/history.json",
-                params={"key": WEATHERAPI_KEY, "q": city, "dt": date_str}
-            )
-            if res.status_code == 200:
-                data = res.json()
-                mm = sum(h["precip_mm"] for h in data["forecast"]["forecastday"][0]["hour"])
-                daily_rainfall.append((date_str, mm))
-            else:
-                daily_rainfall.append((date_str, 0.0))
-        except:
-            daily_rainfall.append((date_str, 0.0))
-    return daily_rainfall
+            url = "http://api.weatherapi.com/v1/history.json"
+            params = {"key": WEATHERAPI_KEY, "q": city, "dt": date_str}
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            day_data = data["forecast"]["forecastday"][0]
+            daily_rain = sum(hour["precip_mm"] for hour in day_data["hour"])
+            rain_data.append((date_str, daily_rain))
+        except Exception:
+            rain_data.append((date_str, 0))
+        progress_bar.progress(day / days)
+        time.sleep(0.1)  # to avoid API rate limits
+    progress_bar.empty()
+    return rain_data
 
 def estimate_risk(rain, humidity):
     if rain > 80 and humidity > 85:
@@ -166,78 +155,87 @@ def estimate_risk(rain, humidity):
     else:
         return "🟢 Low"
 
-# ---------- LATEST FLOOD NEWS ----------
 def get_latest_flood_news():
-    # A simple static example since no API is integrated.
-    # You can replace with a real API or web scraping if desired.
+    # Static sample data - replace with API/web scraping if available
     return [
         {"date": "2025-05-28", "location": "Kuala Lumpur", "description": "Severe flooding in low-lying areas due to heavy rain."},
         {"date": "2025-05-20", "location": "Penang", "description": "Flash floods affected several districts causing road closures."},
         {"date": "2025-04-15", "location": "Johor Bahru", "description": "Floodwaters rose after days of continuous rain."}
     ]
 
-# ---------- FLOOD RISK CHECK ----------
-st.markdown("---")
-if st.button("🔍 Check Flood Risk"):
-    weather = get_weather(selected_city)
-    if weather:
-        st.success("✅ Weather data retrieved successfully.")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("🌡 Temperature", f"{weather['temperature']} °C")
-        col2.metric("💧 Humidity", f"{weather['humidity']}%")
-        col3.metric("🌧 Rainfall", f"{weather['rain']} mm")
-        st.caption(f"🕒 Data time: {weather['time']}")
+# --- Main App ---
 
-        risk = estimate_risk(weather["rain"], weather["humidity"])
-        
-        # Sidebar flood risk + preparation notes
-        st.sidebar.header("⚠ Flood Risk Level")
-        st.sidebar.markdown(f"## {risk}")
-        st.sidebar.markdown("""
-        ### 📝 What to Prepare Before Flood
-        - Prepare emergency kit with food, water, and medicines
-        - Keep important documents in waterproof bags
-        - Plan evacuation routes and safe places
-        - Charge your mobile devices
-        - Stay informed via local news and alerts
-        """)
+st.markdown(f"##### 📅 Today is {datetime.now().strftime('%A, %d %B %Y')}")
 
-        df = pd.DataFrame([{
-            "City": selected_city,
-            "Rainfall (mm)": weather["rain"],
-            "Humidity (%)": weather["humidity"],
-            "Temperature (°C)": weather["temperature"],
-            "Flood Risk": risk
-        }])
-        st.markdown("#### 📊 Weather Summary")
-        st.dataframe(df, use_container_width=True)
+# Location selectors in sidebar
+with st.sidebar:
+    st.header("🌊 Select Location")
+    selected_state = st.selectbox("State", sorted(state_city_coords.keys()))
+    selected_city = st.selectbox("City", sorted(state_city_coords[selected_state].keys()))
+    lat, lon = state_city_coords[selected_state][selected_city]
 
-        chart_df = pd.DataFrame({
-            "Metric": ["Temperature", "Humidity", "Rainfall"],
-            "Value": [weather["temperature"], weather["humidity"], weather["rain"]]
-        }).set_index("Metric")
-        st.bar_chart(chart_df)
+    st.markdown("---")
+    st.header("⚠ Flood Risk Info & Preparation")
+    st.markdown("""
+    - 🔴 **High Risk**: Heavy rainfall & high humidity — prepare to evacuate.
+    - 🟠 **Moderate Risk**: Moderate rainfall — stay alert.
+    - 🟢 **Low Risk**: Low rainfall — normal conditions.
 
-        # Monthly Rainfall
-        st.markdown("#### 🌧 Daily Rainfall in Selected Month")
-        rain_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
-        if rain_data:
+    ### Before a Flood:
+    - Prepare emergency supplies (food, water, medicine)
+    - Keep important documents safe and dry
+    - Charge all devices & keep power banks ready
+    - Plan evacuation routes
+    - Stay updated with official announcements
+    """)
+
+    st.markdown("---")
+    st.header("📅 Rainfall History")
+    selected_year = st.selectbox("Year", [2025, 2024, 2023], index=0)
+    selected_month = st.selectbox("Month", list(range(1, 13)), index=datetime.now().month - 1, format_func=lambda x: calendar.month_name[x])
+
+# Main page layout
+col1, col2 = st.columns([3,1])
+
+with col1:
+    st.markdown(f"### Location Map for **{selected_city}**")
+    st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}), zoom=11)
+
+    if st.button("🔍 Check Flood Risk"):
+        with st.spinner("Fetching weather data..."):
+            weather = get_weather(selected_city)
+        if weather:
+            st.success(f"Weather data as of {weather['time']}")
+            st.metric("🌡 Temperature", f"{weather['temperature']} °C")
+            st.metric("💧 Humidity", f"{weather['humidity']} %")
+            st.metric("🌧 Rainfall (last 1h)", f"{weather['rain']} mm")
+
+            risk = estimate_risk(weather["rain"], weather["humidity"])
+            st.markdown(f"## Flood Risk Level: {risk}")
+
+            st.markdown("### Weather Summary")
+            summary_df = pd.DataFrame({
+                "Metric": ["Temperature (°C)", "Humidity (%)", "Rainfall (mm)"],
+                "Value": [weather["temperature"], weather["humidity"], weather["rain"]]
+            }).set_index("Metric")
+            st.bar_chart(summary_df)
+
+            # Show rainfall history with loading progress
+            st.markdown(f"### Rainfall History for {calendar.month_name[selected_month]} {selected_year}")
+            rain_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
             dates, rains = zip(*rain_data)
             rain_df = pd.DataFrame({"Rainfall (mm)": rains}, index=pd.to_datetime(dates))
             st.line_chart(rain_df)
         else:
-            st.info("No monthly rainfall data available.")
-    else:
-        st.error("❌ Failed to retrieve weather data.")
+            st.error("Could not retrieve weather data. Please try again later.")
 
-# ---------- NOTES ----------
-st.markdown("---")
-st.markdown("### ℹ️ Note:")
-st.markdown("Cities marked with 🌊 symbol are known to be flood-prone areas. Please take extra precautions.")
+with col2:
+    st.markdown("### 📰 Latest Flood Incidents in Malaysia")
+    latest_floods = get_latest_flood_news()
+    for flood in latest_floods:
+        st.markdown(f"**{flood['date']} - {flood['location']}**")
+        st.caption(flood["description"])
 
-# ---------- LATEST FLOOD INCIDENTS ----------
-st.markdown("---")
-st.markdown("### 📰 Latest Flood Incidents in Malaysia")
-latest_floods = get_latest_flood_news()
-for flood in latest_floods:
-    st.markdown(f"- **{flood['date']} - {flood['location']}**: {flood['description']}")
+    st.markdown("---")
+    st.markdown("ℹ️ Cities marked with 🌊 symbol are flood-prone areas.")
+
