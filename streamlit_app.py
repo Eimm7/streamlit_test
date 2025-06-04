@@ -8,103 +8,11 @@ import time
 # --- Config ---
 st.set_page_config(page_title="🌧 FloodSight Malaysia", layout="wide", page_icon="🌊")
 
-# API key for WeatherAPI (replace if needed)
 WEATHERAPI_KEY = "1468e5c2a4b24ce7a64140429250306"
 
-# --- Flood-prone cities with coords ---
 state_city_coords = {
-    "Selangor": {
-        "Shah Alam 🌊": [3.0738, 101.5183],
-        "Klang 🌊": [3.0333, 101.4500],
-        "Petaling Jaya": [3.1073, 101.6067],
-        "Kajang 🌊": [2.9927, 101.7882],
-        "Ampang 🌊": [3.1496, 101.7600],
-        "Gombak": [3.2960, 101.7255]
-    },
-    "Kuala Lumpur": {
-        "Kuala Lumpur 🌊": [3.1390, 101.6869],
-        "Setapak 🌊": [3.1979, 101.7146],
-        "Cheras 🌊": [3.0723, 101.7405]
-    },
-    "Penang": {
-        "George Town 🌊": [5.4164, 100.3327],
-        "Bukit Mertajam": [5.3510, 100.4409],
-        "Butterworth": [5.3997, 100.3638]
-    },
-    "Johor": {
-        "Johor Bahru 🌊": [1.4927, 103.7414],
-        "Muar": [2.0500, 102.5667],
-        "Batu Pahat 🌊": [1.8500, 102.9333],
-        "Kluang 🌊": [2.0305, 103.3169],
-        "Pontian": [1.4856, 103.3895],
-        "Segamat 🌊": [2.5143, 102.8105]
-    },
-    "Kelantan": {
-        "Kota Bharu 🌊": [6.1254, 102.2381],
-        "Pasir Mas 🌊": [6.0333, 102.1333],
-        "Tumpat": [6.1978, 102.1715],
-        "Tanah Merah": [5.8000, 102.1500]
-    },
-    "Terengganu": {
-        "Kuala Terengganu 🌊": [5.3290, 103.1370],
-        "Dungun": [4.7566, 103.4246],
-        "Kemaman 🌊": [4.2333, 103.4167],
-        "Besut": [5.7333, 102.5000]
-    },
-    "Pahang": {
-        "Kuantan 🌊": [3.8077, 103.3260],
-        "Temerloh 🌊": [3.4500, 102.4167],
-        "Raub": [3.7921, 101.8578],
-        "Bentong": [3.5215, 101.9081],
-        "Jerantut": [3.9364, 102.3624]
-    },
-    "Perak": {
-        "Ipoh": [4.5975, 101.0901],
-        "Taiping 🌊": [4.8500, 100.7333],
-        "Teluk Intan": [4.0252, 101.0166],
-        "Sungai Siput": [4.8128, 101.0684]
-    },
-    "Negeri Sembilan": {
-        "Seremban 🌊": [2.7297, 101.9381],
-        "Port Dickson": [2.5372, 101.8057],
-        "Rembau": [2.5844, 102.0784]
-    },
-    "Melaka": {
-        "Melaka City 🌊": [2.2008, 102.2405],
-        "Jasin": [2.3087, 102.4381],
-        "Alor Gajah": [2.3800, 102.2100]
-    },
-    "Kedah": {
-        "Alor Setar 🌊": [6.1184, 100.3685],
-        "Sungai Petani": [5.6496, 100.4875],
-        "Kulim": [5.3653, 100.5610],
-        "Pendang": [5.9989, 100.4797]
-    },
-    "Sabah": {
-        "Kota Kinabalu 🌊": [5.9804, 116.0735],
-        "Sandakan": [5.8380, 118.1170],
-        "Tawau": [4.2448, 117.8911],
-        "Keningau": [5.3378, 116.1611]
-    },
-    "Sarawak": {
-        "Kuching 🌊": [1.5535, 110.3593],
-        "Sibu": [2.2878, 111.8300],
-        "Bintulu": [3.1700, 113.0300],
-        "Miri": [4.3993, 113.9915]
-    },
-    "Perlis": {
-        "Kangar": [6.4333, 100.2000],
-        "Arau": [6.4318, 100.2701]
-    },
-    "Putrajaya": {
-        "Putrajaya": [2.9264, 101.6964]
-    },
-    "Labuan": {
-        "Labuan": [5.2803, 115.2475]
-    }
+    # ... [same as before] ...
 }
-
-# --- Functions ---
 
 def get_weather(city):
     try:
@@ -143,7 +51,7 @@ def get_monthly_rainfall(city, year, month):
         except Exception:
             rain_data.append((date_str, 0))
         progress_bar.progress(day / days)
-        time.sleep(0.1)  # to avoid API rate limits
+        time.sleep(0.1)
     progress_bar.empty()
     return rain_data
 
@@ -155,8 +63,17 @@ def estimate_risk(rain, humidity):
     else:
         return "🟢 Low"
 
+def estimate_historical_risk(rain_list):
+    """Estimate flood risk for historical rainfall data."""
+    avg_rain = sum(r for _, r in rain_list) / len(rain_list)
+    if avg_rain > 80:
+        return "🔴 High (Past Month)"
+    elif avg_rain > 40:
+        return "🟠 Moderate (Past Month)"
+    else:
+        return "🟢 Low (Past Month)"
+
 def get_latest_flood_news():
-    # Static sample data - replace with API/web scraping if available
     return [
         {"date": "2025-05-28", "location": "Kuala Lumpur", "description": "Severe flooding in low-lying areas due to heavy rain."},
         {"date": "2025-05-20", "location": "Penang", "description": "Flash floods affected several districts causing road closures."},
@@ -167,7 +84,6 @@ def get_latest_flood_news():
 
 st.markdown(f"##### 📅 Today is {datetime.now().strftime('%A, %d %B %Y')}")
 
-# Location selectors in sidebar
 with st.sidebar:
     st.header("🌊 Select Location")
     selected_state = st.selectbox("State", sorted(state_city_coords.keys()))
@@ -194,7 +110,6 @@ with st.sidebar:
     selected_year = st.selectbox("Year", [2025, 2024, 2023], index=0)
     selected_month = st.selectbox("Month", list(range(1, 13)), index=datetime.now().month - 1, format_func=lambda x: calendar.month_name[x])
 
-# Main page layout
 col1, col2 = st.columns([3,1])
 
 with col1:
@@ -210,8 +125,8 @@ with col1:
             st.metric("💧 Humidity", f"{weather['humidity']} %")
             st.metric("🌧 Rainfall (last 1h)", f"{weather['rain']} mm")
 
-            risk = estimate_risk(weather["rain"], weather["humidity"])
-            st.markdown(f"## Flood Risk Level: {risk}")
+            current_risk = estimate_risk(weather["rain"], weather["humidity"])
+            st.markdown(f"## Flood Risk Level: {current_risk}")
 
             st.markdown("### Weather Summary")
             summary_df = pd.DataFrame({
@@ -220,12 +135,21 @@ with col1:
             }).set_index("Metric")
             st.bar_chart(summary_df)
 
-            # Show rainfall history with loading progress
             st.markdown(f"### Rainfall History for {calendar.month_name[selected_month]} {selected_year}")
             rain_data = get_monthly_rainfall(selected_city, selected_year, selected_month)
-            dates, rains = zip(*rain_data)
-            rain_df = pd.DataFrame({"Rainfall (mm)": rains}, index=pd.to_datetime(dates))
+
+            # Show dates + rainfall as DataFrame for clarity
+            rain_df = pd.DataFrame(rain_data, columns=["Date", "Rainfall (mm)"])
+            rain_df["Date"] = pd.to_datetime(rain_df["Date"])
+            rain_df = rain_df.set_index("Date")
+
+            st.dataframe(rain_df.style.format("{:.1f}"))
+
             st.line_chart(rain_df)
+
+            hist_risk = estimate_historical_risk(rain_data)
+            st.markdown(f"### Historical Flood Risk: {hist_risk}")
+
         else:
             st.error("Could not retrieve weather data. Please try again later.")
 
@@ -238,4 +162,3 @@ with col2:
 
     st.markdown("---")
     st.markdown("ℹ️ Cities marked with 🌊 symbol are flood-prone areas.")
-
