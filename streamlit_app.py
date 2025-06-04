@@ -11,7 +11,7 @@ WEATHERAPI_KEY = "1468e5c2a4b24ce7a64140429250306"
 # ---------- HEADER ----------
 st.title("🌧 FloodSight Malaysia")
 st.markdown("### Realtime Flood Risk Forecast for Malaysian Cities")
-st.markdown("*Note: Cities marked with 🌊 are known flood-prone areas.*")
+st.markdown("⚠️ Cities marked with 🌊 are known to be flood-prone areas.")
 
 # ---------- FLOOD-PRONE CITIES BY STATE ----------
 state_city_coords = {
@@ -182,6 +182,17 @@ if st.button("🔍 Check Flood Risk"):
         risk = estimate_risk(weather["rain"], weather["humidity"])
         st.sidebar.header("⚠ Flood Risk Level")
         st.sidebar.markdown(f"## {risk}")
+
+        # Flood preparedness tips
+        st.sidebar.markdown("""
+        ---
+        ### 📝 Before a Flood: Be Prepared!
+        - Keep important documents in waterproof bags.
+        - Have an emergency kit ready (food, water, flashlight, batteries).
+        - Know your evacuation routes and nearest shelters.
+        - Charge your mobile devices and power banks.
+        - Avoid driving or walking through floodwaters.
+        """)
 
         df = pd.DataFrame([{
             "City": selected_city,
