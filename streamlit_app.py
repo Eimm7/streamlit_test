@@ -65,7 +65,7 @@ flood_map = {
 }
 
 # --------------------------------------------
-# 📅 User Selections (State, City, Date)
+# 📅 User Selections + Confirmation
 # --------------------------------------------
 st.title("🌧 Malaysia Flood Risk Forecast Dashboard")
 
@@ -79,8 +79,10 @@ with col3:
 
 lat, lon = flood_map[selected_state][selected_city]
 
+confirmed = st.button("✅ Confirm Selection")
+
 # --------------------------------------------
-# 🌦 Weather Forecast API (7-day)
+# 🌦 Weather Forecast API
 # --------------------------------------------
 API_KEY = "1468e5c2a4b24ce7a64140429250306"
 url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=7&aqi=no&alerts=no"
@@ -88,7 +90,7 @@ response = requests.get(url)
 weather = response.json() if response.status_code == 200 else None
 
 # --------------------------------------------
-# 🚦 Risk Evaluation Based on Rainfall
+# 🚦 Risk Level Function
 # --------------------------------------------
 def risk_level(rain_mm):
     if rain_mm < 20:
@@ -101,16 +103,16 @@ def risk_level(rain_mm):
         return "🔴 Extreme"
 
 # --------------------------------------------
-# 🧭 Navigation Tabs
+# 🧭 Tabs Setup
 # --------------------------------------------
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Charts", "📆 Forecast Table", "🗺 National Risk Map", "📰 Flood News"])
 
 # --------------------------------------------
-# 📊 Tab 1: Chart Variety
+# 📊 Tab 1: Charts for Weather Metrics
 # --------------------------------------------
 with tab1:
     st.header("📊 Rainfall, Temperature & Humidity Trends")
-    if weather:
+    if weather and confirmed:
         forecast = weather["forecast"]["forecastday"]
         data = []
         for day in forecast:
@@ -130,33 +132,37 @@ with tab1:
 
         st.subheader("💧 Humidity Levels")
         st.area_chart(df["Humidity (%)"])
-    else:
-        st.error("❌ Could not load weather data. Check your API or internet connection.")
+    elif not confirmed:
+        st.info("👆 Please confirm your selection above to load charts.")
 
 # --------------------------------------------
-# 📆 Tab 2: Forecast Table + Risk Level
+# 📆 Tab 2: Forecast Table + Risk Emoji
 # --------------------------------------------
 with tab2:
     st.header(f"📋 7-Day Weather Forecast for {selected_city}, {selected_state}")
-    if weather:
+    if weather and confirmed:
         df["Risk Level"] = df["Rainfall (mm)"].apply(risk_level)
         st.dataframe(df.reset_index())
     else:
-        st.warning("⚠ Forecast data not available.")
+        st.warning("⚠ Please confirm selection to view forecast table.")
 
 # --------------------------------------------
-# 🗺 Tab 3: National Risk Map
+# 🗺 Tab 3: National Map + Focused City Map
 # --------------------------------------------
 with tab3:
-    st.header("🗺 National Flood Risk Overview by City")
+    st.header("🗺 National & State Flood Risk Maps")
 
-    city_data = []
+    # 🔴 National overview map
+    all_data = []
     for state, cities in flood_map.items():
         for city, coords in cities.items():
-            lat, lon = coords
-            api_url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=1&aqi=no&alerts=no"
-            resp = requests.get(api_url)
-            rain = resp.json()["forecast"]["forecastday"][0]["day"]["totalprecip_mm"] if resp.status_code == 200 else 0
+            city_lat, city_lon = coords
+            try:
+                city_url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={city_lat},{city_lon}&days=1"
+                city_weather = requests.get(city_url).json()
+                rain = city_weather["forecast"]["forecastday"][0]["day"]["totalprecip_mm"]
+            except:
+                rain = 0
             level = risk_level(rain)
             color = {
                 "🟢 Low": [0, 255, 0],
@@ -164,24 +170,37 @@ with tab3:
                 "🟠 High": [255, 165, 0],
                 "🔴 Extreme": [255, 0, 0]
             }[level]
-            city_data.append({"lat": lat, "lon": lon, "color": color})
+            all_data.append({"lat": city_lat, "lon": city_lon, "color": color})
 
-    df_map = pd.DataFrame(city_data)
-    st.pydeck_chart(pdk.Deck(
-        initial_view_state=pdk.ViewState(latitude=4.5, longitude=109.5, zoom=5),
-        layers=[
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=df_map,
-                get_position='[lon, lat]',
-                get_color="color",
-                get_radius=6000
-            )
-        ]
-    ))
+    df_map = pd.DataFrame(all_data)
+
+    map1, map2 = st.columns(2)
+
+    with map1:
+        st.markdown("### 🌍 National Overview")
+        st.pydeck_chart(pdk.Deck(
+            initial_view_state=pdk.ViewState(latitude=4.5, longitude=109.5, zoom=5),
+            layers=[
+                pdk.Layer("ScatterplotLayer", data=df_map,
+                          get_position='[lon, lat]', get_color="color", get_radius=6000)
+            ]
+        ))
+
+    with map2:
+        st.markdown(f"### 🔎 Focus on {selected_city}, {selected_state}")
+        st.pydeck_chart(pdk.Deck(
+            initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=9),
+            layers=[
+                pdk.Layer("ScatterplotLayer",
+                          data=pd.DataFrame([{"lat": lat, "lon": lon}]),
+                          get_position='[lon, lat]',
+                          get_color='[255, 0, 0]',
+                          get_radius=8000)
+            ]
+        ))
 
 # --------------------------------------------
-# 📰 Tab 4: Flood News Links
+# 📰 Tab 4: Flood News
 # --------------------------------------------
 with tab4:
     st.header("📰 Latest Malaysian Flood News")
