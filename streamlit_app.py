@@ -131,11 +131,12 @@ if confirmed:
         start_date = selected_date.strftime('%Y-%m-%d')
         end_date = (selected_date + pd.Timedelta(days=13)).strftime('%Y-%m-%d')
 
+        # Simplified forecast query for testing reliability
         om_url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={lat}&longitude={lon}"
             f"&start_date={start_date}&end_date={end_date}"
-            f"&daily=precipitation_sum,temperature_2m_max,humidity_2m_mean,windspeed_10m_max"
+            f"&daily=precipitation_sum"
             f"&timezone=auto"
         )
 
@@ -143,13 +144,14 @@ if confirmed:
         om_response = requests.get(om_url)
 
         if om_response.status_code == 200:
-            om_data = om_response.json()["daily"]
+            om_data = om_response.json().get("daily", {})
+            if not om_data or "precipitation_sum" not in om_data:
+                st.error("❌ No daily precipitation data returned. Open-Meteo might be down or missing data for that range.")
+                st.stop()
+
             forecast_df = pd.DataFrame({
                 "Date": om_data["time"],
-                "Rainfall (mm)": om_data["precipitation_sum"],
-                "Max Temp (°C)": om_data["temperature_2m_max"],
-                "Humidity (%)": om_data["humidity_2m_mean"],
-                "Wind (kph)": om_data["windspeed_10m_max"]
+                "Rainfall (mm)": om_data["precipitation_sum"]
             })
         else:
             st.warning(f"🔁 Open-Meteo response status: {om_response.status_code}")
@@ -176,50 +178,6 @@ if confirmed:
             st.success("✅ Low rainfall. All clear.")
 
         st.markdown(f"### 🎓 Preparedness Tip: {preparedness_tips(level)}")
-        st.write("### 📟 14-Day Forecast Overview")
+        st.write("### 📿 14-Day Forecast Overview")
         st.dataframe(forecast_df, use_container_width=True, height=600)
         st.caption(f"Showing {len(forecast_df)} days of forecast from Open-Meteo")
-
-    with tab2:
-        st.subheader("🌍 Visual Rainfall Intensity Map")
-        map_df = pd.DataFrame({
-            "lat": [lat],
-            "lon": [lon],
-            "popup": [f"{selected_city}, {selected_state}"],
-            "intensity": [forecast_df["Rainfall (mm)"].iloc[0]]
-        })
-        st.pydeck_chart(pdk.Deck(
-            map_style='mapbox://styles/mapbox/satellite-v9',
-            initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8, pitch=40),
-            layers=[
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=map_df,
-                    get_position='[lon, lat]',
-                    get_color='[255, 140, 0, 160]',
-                    get_radius=5000,
-                    pickable=True
-                )
-            ],
-            tooltip={"text": "{popup}\nIntensity: {intensity} mm"}
-        ))
-
-    with tab3:
-        st.subheader("📉 Environmental Trends for Next 14 Days")
-        st.line_chart(forecast_df.set_index("Date")[["Rainfall (mm)", "Max Temp (°C)"]])
-        st.bar_chart(forecast_df.set_index("Date")["Humidity (%)"])
-        st.area_chart(forecast_df.set_index("Date")["Wind (kph)"])
-
-    with tab4:
-        st.subheader("📊 Flood Risk Breakdown")
-        risk_counts = forecast_df["Rainfall (mm)"].apply(risk_level).value_counts()
-        plt.figure(figsize=(6, 6))
-        plt.pie(risk_counts, labels=risk_counts.index, autopct='%1.1f%%', startangle=140)
-        plt.axis('equal')
-        st.pyplot(plt)
-
-    with tab5:
-        st.subheader("🔢 Compare Current Forecast to Historical Averages")
-        historical_df = forecast_df.copy()
-        historical_df["Historical Rainfall"] = forecast_df["Rainfall (mm)"].apply(lambda x: max(0, x - np.random.randint(-5, 5)))
-        st.line_chart(historical_df.set_index("Date")[["Rainfall (mm)", "Historical Rainfall"]])
