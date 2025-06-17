@@ -1,9 +1,9 @@
 streamlit
 pandas
-requests
-pydeck
 numpy
+requests
 openmeteo-requests
 requests-cache
 retry-requests
-
+pydeck==0.8.0
+matplotlib
