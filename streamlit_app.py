@@ -90,10 +90,10 @@ if go:
             st.stop()
 
     today = datetime.today()
-    start_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
-    end_date = (today + timedelta(days=7)).strftime("%Y-%m-%d")
+    start_date = today.strftime("%Y-%m-%d")
+    end_date = (today + timedelta(days=2)).strftime("%Y-%m-%d")  # 3-day forecast
 
-    w = session.get(f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14").json()
+    w = session.get(f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=3").json()
     o = session.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&start_date={start_date}&end_date={end_date}&daily=precipitation_sum&timezone=auto").json()
 
     rain = [d["day"]["totalprecip_mm"] for d in w["forecast"]["forecastday"]]
@@ -111,15 +111,8 @@ if go:
         lvl = risk_level(max(rain[0], o["daily"]["precipitation_sum"][0]))
         getattr(st, {"Extreme":"error","High":"warning","Moderate":"info","Low":"success"}[lvl])(f"{lvl} today – {tip(lvl)}")
 
-        today_str = today.strftime("%Y-%m-%d")
-        past_df = df[df["Date"] < today_str]
-        future_df = df[df["Date"] >= today_str]
-
-        st.subheader("📉 Past 7 Days")
-        st.dataframe(past_df.reset_index(drop=True), use_container_width=True)
-
-        st.subheader("📅 Upcoming 7 Days Forecast")
-        st.dataframe(future_df.reset_index(drop=True), use_container_width=True)
+        st.subheader("📅 3-Day Forecast")
+        st.dataframe(df.reset_index(drop=True), use_container_width=True)
 
     with tabs[1]:
         data = pd.DataFrame({"lat":[lat],"lon":[lon],"intensity":[o["daily"]["precipitation_sum"][0]]})
@@ -138,7 +131,7 @@ if go:
         ))
 
     with tabs[2]:
-        st.line_chart(df.set_index("Date")[["Rain (mm)", "Temp (°C)"]])
+        st.line_chart(df.set_index("Date")["Rain (mm)"])
         st.bar_chart(df.set_index("Date")["Humidity (%)"])
         st.area_chart(df.set_index("Date")["Wind (kph)"])
 
