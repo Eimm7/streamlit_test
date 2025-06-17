@@ -105,7 +105,7 @@ if go:
         "Wind (kph)": [d["day"]["maxwind_kph"] for d in w["forecast"]["forecastday"]],
     })
 
-    tabs = st.tabs(["🌧️ Forecast Summary", "Map", "Trends", "Risk Pie", "History", "News"])
+    tabs = st.tabs(["🌧️ Forecast", "🗺️ Map View", "📈 Trends", "🧭 Risk Overview", "📜 History", "📰 News"])
 
     with tabs[0]:
         lvl = risk_level(max(rain[0], o["daily"]["precipitation_sum"][0]))
@@ -121,7 +121,12 @@ if go:
         st.dataframe(df_past, use_container_width=True)
 
     with tabs[1]:
-        data = pd.DataFrame({"lat":[lat],"lon":[lon],"intensity":[o["daily"]["precipitation_sum"][0]]})
+        data = pd.DataFrame({
+            "lat": [lat],
+            "lon": [lon],
+            "intensity": [o["daily"]["precipitation_sum"][0]],
+            "tooltip": [f"Location: {district}, {state}\nRainfall: {o['daily']['precipitation_sum'][0]} mm"]
+        })
         st.pydeck_chart(pdk.Deck(
             initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8),
             layers=[pdk.Layer(
@@ -133,7 +138,7 @@ if go:
                 pickable=True,
                 opacity=0.3
             )],
-            tooltip={"text": f"Location: {district}, {state}"}
+            tooltip={"text": "{tooltip}"}
         ))
 
     with tabs[2]:
