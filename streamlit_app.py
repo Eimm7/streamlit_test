@@ -1,3 +1,8 @@
+# Flood Buddy - Malaysia Dashboard (Streamlit App)
+# ================================================
+# This app shows 14-day flood risk forecasts, maps, charts, and news for districts in Malaysia.
+# Data sources: WeatherAPI (forecast), Open-Meteo (precipitation), NewsData.io (flood news)
+
 import streamlit as st
 import requests
 import pandas as pd
@@ -9,23 +14,29 @@ import requests_cache
 from retry_requests import retry
 from geopy.geocoders import Nominatim
 
-# --- Page config & styling ---
-st.set_page_config(page_title="\ud83c\udf27 Flood Buddy - Malaysia", page_icon="\u2614", layout="wide")
+# --- Page configuration and custom styles ---
+st.set_page_config(page_title=":cloud_with_rain: Flood Buddy - Malaysia", page_icon=":umbrella:", layout="wide")
 st.markdown("""
 <style>
 .stButton button { background:#28a745;color:#fff;font-weight:bold;border-radius:8px; }
-.news-card { background:#e3f2fd;border-left:5px solid #0077b6;padding:16px;margin:10px 0;border-radius:6px;
-             box-shadow:2px 2px 6px rgba(0,0,0,0.1); }
+.news-card {
+ background:#fff8dc;
+ border-left:5px solid #0077b6;
+ padding:16px;
+ margin:10px 0;
+ border-radius:6px;
+ box-shadow:2px 2px 6px rgba(0,0,0,0.1);
+}
 </style>
 """, unsafe_allow_html=True)
 
-# --- API keys & session setup ---
-API_KEY = "1468e5c2a4b24ce7a64140429250306"  # WeatherAPI key
-NEWS_API_KEY = "pub_6b426fe08efa4436a4cd58ec988c62e0"  # NewsData API key
+# --- API keys and session config ---
+API_KEY = "1468e5c2a4b24ce7a64140429250306"
+NEWS_API_KEY = "pub_6b426fe08efa4436a4cd58ec988c62e0"
 session = retry(requests_cache.CachedSession('.cache', expire_after=3600), retries=5, backoff_factor=0.2)
 geolocator = Nominatim(user_agent="flood-buddy-app")
 
-# --- Flood-prone districts ---
+# --- Define flood-prone districts by state ---
 flood_map = {
     "Selangor": ["Shah Alam", "Petaling", "Klang", "Gombak", "Hulu Langat", "Sabak Bernam"],
     "Johor": ["Johor Bahru", "Batu Pahat", "Muar", "Kluang", "Segamat", "Kota Tinggi"],
@@ -42,26 +53,26 @@ flood_map = {
     "Perlis": ["Kangar", "Arau"]
 }
 
-# --- Sidebar inputs ---
+# --- Sidebar input for state, district, date, and optional coordinate override ---
 with st.sidebar:
-    st.title("\u2699\ufe0f Settings")
+    st.title("⚙️ Settings")
     state = st.selectbox("State", list(flood_map.keys()))
     district = st.selectbox("District", flood_map[state])
     date = st.date_input("Forecast Date", datetime.today())
     coord_override = st.text_input("Or enter coords manually (lat,lon)")
-    go = st.button("\ud83d\udd0d Get Forecast")
+    go = st.button("🔍 Get Forecast")
 
-# --- Risk level logic ---
+# --- Helper functions ---
 def risk_level(r):
     return "Extreme" if r > 50 else "High" if r > 30 else "Moderate" if r > 10 else "Low"
 
-def tip(l):
+def tip(level):
     return {
         "Extreme": "Evacuate if needed; avoid floodwaters.",
         "High":     "Charge devices; avoid low areas.",
         "Moderate": "Monitor alerts; stay indoors.",
         "Low":      "Stay aware."
-    }[l]
+    }[level]
 
 def get_coords(state, district):
     try:
@@ -77,7 +88,7 @@ def fetch_news():
     except:
         return []
 
-# --- Main app logic ---
+# --- Main logic when button is pressed ---
 if go:
     if coord_override and "," in coord_override:
         lat, lon = map(float, coord_override.split(","))
@@ -87,6 +98,7 @@ if go:
             st.error("Could not geolocate this district. Please enter coordinates manually.")
             st.stop()
 
+    # Get 14-day weather forecast from APIs
     w = session.get(f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14").json()
     o = session.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto").json()
 
@@ -94,67 +106,59 @@ if go:
     df = pd.DataFrame({
         "Date": [d["date"] for d in w["forecast"]["forecastday"]],
         "Rain (mm)": rain,
-        "Temp (\u00b0C)": [d["day"]["maxtemp_c"] for d in w["forecast"]["forecastday"]],
+        "Temp (°C)": [d["day"]["maxtemp_c"] for d in w["forecast"]["forecastday"]],
         "Humidity (%)": [d["day"]["avghumidity"] for d in w["forecast"]["forecastday"]],
         "Wind (kph)": [d["day"]["maxwind_kph"] for d in w["forecast"]["forecastday"]],
     })
 
     tabs = st.tabs(["Forecast","Map","Trends","Risk Pie","History","News"])
 
+    # --- Tab 1: Forecast table ---
     with tabs[0]:
-        today_rain = df.iloc[0]["Rain (mm)"]
-        open_meteo_today_rain = o["daily"]["precipitation_sum"][0]
-        lvl = risk_level(max(today_rain, open_meteo_today_rain))
-        getattr(st, {"Extreme": "error", "High": "warning", "Moderate": "info", "Low": "success"}[lvl])(f"{lvl} today – {tip(lvl)}")
+        lvl = risk_level(max(rain[0], o["daily"]["precipitation_sum"][0]))
+        getattr(st, {"Extreme":"error","High":"warning","Moderate":"info","Low":"success"}[lvl])(f"{lvl} today – {tip(lvl)}")
+        st.dataframe(df, use_container_width=True, height=600)
 
-        st.subheader("\ud83d\uddd3\ufe0f 14-Day Forecast")
-        st.dataframe(df.style.format({
-            "Rain (mm)": "{:.1f}",
-            "Temp (°C)": "{:.1f}",
-            "Humidity (%)": "{:.0f}",
-            "Wind (kph)": "{:.1f}"
-        }), use_container_width=True, height=600)
-
+    # --- Tab 2: Map view ---
     with tabs[1]:
-        st.subheader("\ud83d\udccd Map View")
-        map_df = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [open_meteo_today_rain]})
+        data = pd.DataFrame({"lat":[lat],"lon":[lon],"intensity":[o["daily"]["precipitation_sum"][0]]})
         st.pydeck_chart(pdk.Deck(
             initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8),
             layers=[
-                pdk.Layer("ScatterplotLayer", data=map_df, get_position='[lon, lat]', get_color='[200, 30, 0, 160]', get_radius=8000),
-                pdk.Layer("HeatmapLayer", data=map_df, get_position='[lon, lat]', get_weight='intensity')
+                pdk.Layer("HeatmapLayer", data=data, get_weight="intensity"),
+                pdk.Layer("ScatterplotLayer", data=data, get_position='[lon, lat]', get_color='[0, 0, 255]', get_radius=8000)
             ]
         ))
 
+    # --- Tab 3: Trend charts ---
     with tabs[2]:
-        st.subheader("\ud83d\udcca Trends")
         st.line_chart(df.set_index("Date")[["Rain (mm)", "Temp (°C)"]])
         st.bar_chart(df.set_index("Date")["Humidity (%)"])
         st.area_chart(df.set_index("Date")["Wind (kph)"])
 
+    # --- Tab 4: Risk level pie chart ---
     with tabs[3]:
-        st.subheader("\ud83c\udf10 Risk Distribution")
         counts = df["Rain (mm)"].map(risk_level).value_counts()
         plt.figure(figsize=(6,6))
         plt.pie(counts, labels=counts.index, autopct="%1.1f%%")
         st.pyplot(plt)
 
+    # --- Tab 5: Historical comparison chart ---
     with tabs[4]:
-        st.subheader("\u23f2\ufe0f Historical Comparison")
         h = df.copy()
         np.random.seed(0)
         h["HistRain"] = h["Rain (mm)"] + np.random.randint(-5,6,size=len(h))
         st.line_chart(h.set_index("Date")[["Rain (mm)", "HistRain"]])
 
+    # --- Tab 6: Flood-related news ---
     with tabs[5]:
-        st.subheader("\ud83d\udd24 Latest Flood News")
         news = fetch_news()
         if news:
             for n in news:
                 st.markdown(f"""
-                <div class="news-card">
+                <div class=\"news-card\">
                   <strong>{n['title']}</strong><br><small>{n.get('pubDate','')}</small><br>
-                  <a href="{n['link']}" target="_blank">\ud83d\udd17 Read more</a>
+                  <a href=\"{n['link']}\" target=\"_blank\">🔗 Read more</a>
                 </div>
                 """, unsafe_allow_html=True)
         else:
