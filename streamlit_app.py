@@ -1,5 +1,5 @@
 # --------------------------------------------
-# 🇲🇾 Malaysia Flood Risk Forecast Dashboard
+# 🌧️ Malaysia Flood Risk Buddy (User-Friendly Edition)
 # BVI1234 | Group VC24001 · VC24009 · VC24011
 # --------------------------------------------
 
@@ -17,17 +17,17 @@ from retry_requests import retry
 # 🎨 Page Setup
 # --------------------------------------------
 st.set_page_config(
-    page_title="🇲🇾 Malaysia Flood Risk Forecast",
-    page_icon="🌊",
+    page_title="🌧️ Flood Buddy - Interactive",
+    page_icon="☔",
     layout="wide"
 )
 
 st.markdown("""
     <style>
-    .main { background-color: #f0f2f6; }
-    .stButton button { background-color: #007BFF; color: white; font-weight: bold; }
-    .stSelectbox label, .stDateInput label { font-weight: bold; }
-    .stTabs [data-baseweb="tab"] button { font-weight: bold; }
+    .main { background-color: #eef3f9; }
+    .stButton button { background-color: #28a745; color: white; font-weight: bold; border-radius: 8px; }
+    .stSelectbox label, .stDateInput label, .stTextInput label { font-weight: bold; }
+    .stTabs [data-baseweb=\"tab\"] button { font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -37,6 +37,8 @@ st.markdown("""
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
+
+API_KEY = "1468e5c2a4b24ce7a64140429250306"
 
 # --------------------------------------------
 # 📍 City Coordinates (Flood-Prone Areas)
@@ -70,22 +72,38 @@ flood_map = {
 }
 
 # --------------------------------------------
-# 🗓️ User Interface
+# 🧭 Welcome Panel
 # --------------------------------------------
-st.title("🌧 Malaysia Flood Risk Forecast Dashboard")
+st.title("🌊 Your Personal Flood Buddy")
+st.markdown("Get real-time info, forecast, and visualize flood-prone conditions in Malaysia. Easy to use, fun to explore!")
+
+st.markdown("---")
+
+st.subheader("📍 Location & Date Settings")
 col1, col2, col3 = st.columns(3)
 with col1:
-    selected_state = st.selectbox("📍 Select State", list(flood_map.keys()))
+    selected_state = st.selectbox("🗺️ Choose State", list(flood_map.keys()))
 with col2:
-    selected_city = st.selectbox("🏠 Select City", list(flood_map[selected_state].keys()))
+    selected_city = st.selectbox("🏠 Choose City", list(flood_map[selected_state].keys()))
 with col3:
-    selected_date = st.date_input("📆 Select Date", datetime.today())
+    selected_date = st.date_input("🗖️ Pick a Date to Check Forecast", datetime.today())
 
-lat, lon = flood_map[selected_state][selected_city]
-confirmed = st.button("✅ Confirm Selection")
+custom_location = st.text_input("🧱 Or type your own location (latitude,longitude) for more control")
+latlon = custom_location.split(',') if custom_location else []
+
+if len(latlon) == 2:
+    try:
+        lat, lon = float(latlon[0]), float(latlon[1])
+    except:
+        st.warning("⚠️ Format Error. Try: 3.0738,101.5183")
+        lat, lon = flood_map[selected_state][selected_city]
+else:
+    lat, lon = flood_map[selected_state][selected_city]
+
+confirmed = st.button("🔍 Get My Forecast")
 
 # --------------------------------------------
-# 📡 Fetch Data from WeatherAPI + Open-Meteo
+# 📡 Weather Fetch Logic
 # --------------------------------------------
 def risk_level(rain):
     if rain > 50:
@@ -97,10 +115,20 @@ def risk_level(rain):
     else:
         return "🟢 Low"
 
+def preparedness_tips(level):
+    if level == "🔴 Extreme":
+        return "Evacuate if needed, keep emergency kit ready, avoid floodwaters."
+    elif level == "🟠 High":
+        return "Charge devices, prepare emergency contact list, avoid travel in low areas."
+    elif level == "🟡 Moderate":
+        return "Monitor local alerts, keep essentials ready, stay indoors during rain."
+    else:
+        return "Stay informed and maintain general awareness."
+
 weather, om_rain = None, None
 if confirmed:
     try:
-        url = f"https://api.weatherapi.com/v1/forecast.json?key=YOUR_API_KEY&q={lat},{lon}&days=7"
+        url = f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=7"
         response = requests.get(url)
         if response.status_code == 200:
             weather = response.json()
@@ -108,13 +136,14 @@ if confirmed:
         st.error(f"❌ WeatherAPI Error: {e}")
 
     try:
-        result = openmeteo.weather_api(latitude=lat, longitude=lon, daily=["precipitation_sum"], timezone="auto")
+        api = openmeteo_requests.WeatherApi()
+        result = api.weather_api(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto")
         om_rain = result.Daily().Variables(0).ValuesAsNumpy()
     except Exception as e:
         st.error(f"❌ Open-Meteo Error: {e}")
 
 # --------------------------------------------
-# ⚠️ Real-Time Alert Function
+# ⚠️ Risk Alerts
 # --------------------------------------------
 def show_alert_box():
     if weather and om_rain is not None:
@@ -123,23 +152,25 @@ def show_alert_box():
         combined = max(rain_api, rain_om)
         level = risk_level(combined)
         if level == "🔴 Extreme":
-            st.error("🚨 EXTREME RAINFALL! Immediate flood risk!")
+            st.error("🚨 EXTREME RAINFALL! Take action immediately!")
         elif level == "🟠 High":
-            st.warning("⚠️ High rainfall. Be alert.")
+            st.warning("⚠️ Heavy rainfall expected. Be alert.")
         elif level == "🟡 Moderate":
-            st.info("🔎 Moderate rain. Monitor updates.")
+            st.info("🔎 Moderate rain. Keep watch.")
         else:
-            st.success("✅ Low rainfall today.")
+            st.success("✅ Low rainfall. All clear.")
+
+        st.markdown(f"### 🎓 Preparedness Tip: {preparedness_tips(level)}")
 
 # --------------------------------------------
-# 📊 Tabbed Display
+# 📊 Interactive Tabs
 # --------------------------------------------
 if confirmed and weather:
-    tab1, tab2, tab3 = st.tabs(["🗓️ Forecast", "🗼️ Map", "📊 Monitoring"])
+    tab1, tab2, tab3 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts"])
 
     with tab1:
         show_alert_box()
-        st.write("### 7-Day Forecast Summary")
+        st.write("### 🧾 7-Day Forecast Overview")
         forecast_df = pd.DataFrame({
             "Date": [f["date"] for f in weather["forecast"]["forecastday"]],
             "Rainfall (mm)": [f["day"]["totalprecip_mm"] for f in weather["forecast"]["forecastday"]],
@@ -148,7 +179,7 @@ if confirmed and weather:
         st.dataframe(forecast_df)
 
     with tab2:
-        st.subheader("🗼️ Rainfall Risk Map")
+        st.subheader("🌍 Visual Rainfall Intensity Map")
         map_df = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [om_rain[0] if om_rain is not None else 0]})
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/light-v9',
@@ -160,7 +191,7 @@ if confirmed and weather:
         ))
 
     with tab3:
-        st.subheader("📈 7-Day Monitoring Charts")
+        st.subheader("📉 Environmental Trends for Next 7 Days")
         df = pd.DataFrame({
             "Date": [d["date"] for d in weather["forecast"]["forecastday"]],
             "Rain (mm)": [d["day"]["totalprecip_mm"] for d in weather["forecast"]["forecastday"]],
@@ -171,4 +202,4 @@ if confirmed and weather:
         st.bar_chart(df.set_index("Date")["Humidity (%)"])
         st.area_chart(df.set_index("Date")["Wind (kph)"])
 
-# End of Dashboard
+# End
