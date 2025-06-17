@@ -7,7 +7,11 @@ import streamlit as st
 import requests
 import pandas as pd
 import pydeck as pdk
+import numpy as np
 from datetime import datetime
+import openmeteo_requests
+import requests_cache
+from retry_requests import retry
 
 # --------------------------------------------
 # 🎨 Page Setup
@@ -19,9 +23,17 @@ st.set_page_config(
 )
 
 # --------------------------------------------
+# 🌐 Setup Open-Meteo Client
+# --------------------------------------------
+cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+openmeteo = openmeteo_requests.Client(session=retry_session)
+
+# --------------------------------------------
 # 📍 City Coordinates (Flood-Prone Areas)
 # --------------------------------------------
 flood_map = {
+    # Coordinates for 5 Malaysian states with multiple cities
     "Selangor": {
         "Shah Alam": (3.0738, 101.5183),
         "Klang": (3.0339, 101.4455),
@@ -65,7 +77,7 @@ flood_map = {
 }
 
 # --------------------------------------------
-# 📅 User Selections + Confirmation
+# 📅 User Selections Interface
 # --------------------------------------------
 st.title("🌧 Malaysia Flood Risk Forecast Dashboard")
 
@@ -77,17 +89,42 @@ with col2:
 with col3:
     selected_date = st.date_input("📆 Select Date", datetime.today())
 
+# Get latitude and longitude from selected city
 lat, lon = flood_map[selected_state][selected_city]
-
 confirmed = st.button("✅ Confirm Selection")
 
 # --------------------------------------------
-# 🌦 Weather Forecast API
+# 🌦 Get WeatherAPI Forecast Data
 # --------------------------------------------
 API_KEY = "1468e5c2a4b24ce7a64140429250306"
 url = f"http://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=7&aqi=no&alerts=no"
 response = requests.get(url)
 weather = response.json() if response.status_code == 200 else None
+
+# --------------------------------------------
+# 📡 Get Open-Meteo River Discharge
+# --------------------------------------------
+discharge_data = []
+try:
+    river_url = "https://flood-api.open-meteo.com/v1/flood"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "daily": "river_discharge"
+    }
+    responses = openmeteo.weather_api(river_url, params=params)
+    response_river = responses[0]
+    daily = response_river.Daily()
+    discharge_data = daily.Variables(0).ValuesAsNumpy()
+    discharge_dates = pd.date_range(
+        start=pd.to_datetime(daily.Time(), unit="s", utc=True),
+        end=pd.to_datetime(daily.TimeEnd(), unit="s", utc=True),
+        freq=pd.Timedelta(seconds=daily.Interval()),
+        inclusive="left"
+    )
+except:
+    discharge_data = [0] * 7
+    discharge_dates = pd.date_range(datetime.today(), periods=7)
 
 # --------------------------------------------
 # 🚦 Risk Level Function
@@ -103,56 +140,63 @@ def risk_level(rain_mm):
         return "🔴 Extreme"
 
 # --------------------------------------------
-# 🧭 Tabs Setup
+# 🧭 Tabs Interface
 # --------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Charts", "📆 Forecast Table", "🗺 National Risk Map", "📰 Flood News"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Charts", "📆 Forecast Table", "🗺 National Heatmap", "📰 Flood News"])
 
 # --------------------------------------------
-# 📊 Tab 1: Charts for Weather Metrics
+# 📊 Tab 1: Trend Charts
 # --------------------------------------------
 with tab1:
-    st.header("📊 Rainfall, Temperature & Humidity Trends")
+    st.header("📊 Rainfall, Temperature & River Discharge Trends")
     if weather and confirmed:
         forecast = weather["forecast"]["forecastday"]
         data = []
-        for day in forecast:
+        for day, discharge in zip(forecast, discharge_data):
             data.append({
                 "Date": day["date"],
                 "Rainfall (mm)": day["day"]["totalprecip_mm"],
                 "Max Temp (°C)": day["day"]["maxtemp_c"],
-                "Humidity (%)": day["day"]["avghumidity"]
+                "River Discharge (m³/s)": discharge
             })
         df = pd.DataFrame(data).set_index("Date")
 
+        # Rainfall chart
         st.subheader("🌧 Daily Rainfall")
         st.bar_chart(df["Rainfall (mm)"])
 
+        # Temperature chart
         st.subheader("🌡 Max Temperature")
         st.line_chart(df["Max Temp (°C)"])
 
-        st.subheader("💧 Humidity Levels")
-        st.area_chart(df["Humidity (%)"])
+        # River discharge chart
+        st.subheader("🌊 River Discharge")
+        st.area_chart(df["River Discharge (m³/s)"])
     elif not confirmed:
         st.info("👆 Please confirm your selection above to load charts.")
 
 # --------------------------------------------
-# 📆 Tab 2: Forecast Table + Risk Emoji
+# 📆 Tab 2: Forecast Table with Risk Coloring
 # --------------------------------------------
 with tab2:
     st.header(f"📋 7-Day Weather Forecast for {selected_city}, {selected_state}")
     if weather and confirmed:
         df["Risk Level"] = df["Rainfall (mm)"].apply(risk_level)
-        st.dataframe(df.reset_index())
+        st.dataframe(df.reset_index().style.applymap(
+            lambda val: "background-color: #ffcccc" if "Extreme" in str(val) else
+                        "background-color: #ffe599" if "High" in str(val) else
+                        "background-color: #fff2cc" if "Moderate" in str(val) else
+                        "background-color: #d9ead3" if "Low" in str(val) else "",
+            subset=["Risk Level"]
+        ))
     else:
         st.warning("⚠ Please confirm selection to view forecast table.")
 
 # --------------------------------------------
-# 🗺 Tab 3: National Map + Focused City Map
+# 🗺 Tab 3: National Heatmap with Points
 # --------------------------------------------
 with tab3:
-    st.header("🗺 National & State Flood Risk Maps")
-
-    # 🔴 National overview map
+    st.header("🗺 Malaysia National Flood Risk Map (Heat + Points)")
     all_data = []
     for state, cities in flood_map.items():
         for city, coords in cities.items():
@@ -164,43 +208,31 @@ with tab3:
             except:
                 rain = 0
             level = risk_level(rain)
-            color = {
-                "🟢 Low": [0, 255, 0],
-                "🟡 Moderate": [255, 255, 0],
-                "🟠 High": [255, 165, 0],
-                "🔴 Extreme": [255, 0, 0]
-            }[level]
-            all_data.append({"lat": city_lat, "lon": city_lon, "color": color})
+            intensity = min(rain / 100, 1.0)
+            all_data.append({"lat": city_lat, "lon": city_lon, "intensity": intensity})
 
     df_map = pd.DataFrame(all_data)
 
-    map1, map2 = st.columns(2)
-
-    with map1:
-        st.markdown("### 🌍 National Overview")
-        st.pydeck_chart(pdk.Deck(
-            initial_view_state=pdk.ViewState(latitude=4.5, longitude=109.5, zoom=5),
-            layers=[
-                pdk.Layer("ScatterplotLayer", data=df_map,
-                          get_position='[lon, lat]', get_color="color", get_radius=6000)
-            ]
-        ))
-
-    with map2:
-        st.markdown(f"### 🔎 Focus on {selected_city}, {selected_state}")
-        st.pydeck_chart(pdk.Deck(
-            initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=9),
-            layers=[
-                pdk.Layer("ScatterplotLayer",
-                          data=pd.DataFrame([{"lat": lat, "lon": lon}]),
-                          get_position='[lon, lat]',
-                          get_color='[255, 0, 0]',
-                          get_radius=8000)
-            ]
-        ))
+    st.pydeck_chart(pdk.Deck(
+        initial_view_state=pdk.ViewState(latitude=4.5, longitude=109.5, zoom=5),
+        layers=[
+            # Heatmap Layer
+            pdk.Layer("HeatmapLayer",
+                      data=df_map,
+                      get_position='[lon, lat]',
+                      get_weight='intensity',
+                      radiusPixels=60),
+            # Point Layer
+            pdk.Layer("ScatterplotLayer",
+                      data=df_map,
+                      get_position='[lon, lat]',
+                      get_color='[255, 0, 0]',
+                      get_radius=5000)
+        ]
+    ))
 
 # --------------------------------------------
-# 📰 Tab 4: Flood News
+# 📰 Tab 4: Latest News
 # --------------------------------------------
 with tab4:
     st.header("📰 Latest Malaysian Flood News")
