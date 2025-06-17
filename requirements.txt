@@ -1,1 +1,9 @@
+streamlit
+pandas
 requests
+pydeck
+numpy
+openmeteo-requests
+requests-cache
+retry-requests
+
