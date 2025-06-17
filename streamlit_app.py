@@ -85,9 +85,9 @@ with col1:
 with col2:
     selected_city = st.selectbox("🏠 Choose City", list(flood_map[selected_state].keys()))
 with col3:
-    selected_date = st.date_input("🖖️ Pick a Date to Check Forecast", datetime.today())
+    selected_date = st.date_input("🪖️ Pick a Date to Check Forecast", datetime.today())
 
-custom_location = st.text_input("🧱 Or type your own location (latitude,longitude) for more control")
+custom_location = st.text_input("🩱 Or type your own location (latitude,longitude) for more control")
 latlon = custom_location.split(',') if custom_location else []
 
 if len(latlon) == 2:
@@ -165,7 +165,7 @@ def show_alert_box():
 # 📊 Interactive Tabs
 # --------------------------------------------
 if confirmed and weather:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts", "📅 Flood Risk Pie", "📈 Historical Comparison"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts", "🗕 Flood Risk Pie", "📈 Historical Comparison"])
 
     with tab1:
         show_alert_box()
@@ -177,18 +177,31 @@ if confirmed and weather:
             "Humidity (%)": [f["day"]["avghumidity"] for f in weather["forecast"]["forecastday"]],
             "Wind (kph)": [f["day"]["maxwind_kph"] for f in weather["forecast"]["forecastday"]]
         })
-        st.dataframe(forecast_df, use_container_width=True)
+        st.dataframe(forecast_df, use_container_width=True, height=600)
+        st.caption(f"Showing {len(forecast_df)} days of forecast")
 
     with tab2:
         st.subheader("🌍 Visual Rainfall Intensity Map")
-        map_df = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [om_rain[0] if om_rain is not None else 0]})
+        map_df = pd.DataFrame({
+            "lat": [lat],
+            "lon": [lon],
+            "popup": [f"{selected_city}, {selected_state}"],
+            "intensity": [om_rain[0] if om_rain is not None else 0]
+        })
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/satellite-v9',
             initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8, pitch=40),
             layers=[
-                pdk.Layer("ScatterplotLayer", data=map_df, get_position='[lon, lat]', get_color='[255, 140, 0, 160]', get_radius=5000),
-                pdk.Layer("HeatmapLayer", data=map_df, get_position='[lon, lat]', aggregation='MEAN', get_weight='intensity')
-            ]
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=map_df,
+                    get_position='[lon, lat]',
+                    get_color='[255, 140, 0, 160]',
+                    get_radius=5000,
+                    pickable=True
+                )
+            ],
+            tooltip={"text": "{popup}\nIntensity: {intensity} mm"}
         ))
 
     with tab3:
