@@ -72,7 +72,10 @@ def get_coords(state, district):
 def fetch_news(search_term):
     try:
         r = session.get(f"https://newsdata.io/api/1/news?apikey={NEWS_API_KEY}&q={search_term}%20flood%20malaysia")
-        return r.json().get("results", [])
+        results = r.json().get("results", [])
+        keywords = ["flood", "banjir", "evacuate", "rain", "landslide", "inundation"]
+        filtered = [n for n in results if any(k in n["title"].lower() for k in keywords)]
+        return filtered
     except:
         return []
 
@@ -90,11 +93,9 @@ if go:
     start_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
     end_date = (today + timedelta(days=7)).strftime("%Y-%m-%d")
 
-    # Fetch forecasts from WeatherAPI and Open-Meteo
     w = session.get(f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14").json()
     o = session.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&start_date={start_date}&end_date={end_date}&daily=precipitation_sum&timezone=auto").json()
 
-    # Prepare Forecast Table
     rain = [d["day"]["totalprecip_mm"] for d in w["forecast"]["forecastday"]]
     df = pd.DataFrame({
         "Date": [d["date"] for d in w["forecast"]["forecastday"]],
@@ -104,13 +105,21 @@ if go:
         "Wind (kph)": [d["day"]["maxwind_kph"] for d in w["forecast"]["forecastday"]],
     })
 
-    # Tabs for views
     tabs = st.tabs(["Forecast", "Map", "Trends", "Risk Pie", "History", "News"])
 
     with tabs[0]:
         lvl = risk_level(max(rain[0], o["daily"]["precipitation_sum"][0]))
         getattr(st, {"Extreme":"error","High":"warning","Moderate":"info","Low":"success"}[lvl])(f"{lvl} today – {tip(lvl)}")
-        st.dataframe(df, use_container_width=True, height=600)
+
+        today_str = today.strftime("%Y-%m-%d")
+        past_df = df[df["Date"] < today_str]
+        future_df = df[df["Date"] >= today_str]
+
+        st.subheader("📉 Past 7 Days")
+        st.dataframe(past_df.reset_index(drop=True), use_container_width=True)
+
+        st.subheader("📅 Upcoming 7 Days Forecast")
+        st.dataframe(future_df.reset_index(drop=True), use_container_width=True)
 
     with tabs[1]:
         data = pd.DataFrame({"lat":[lat],"lon":[lon],"intensity":[o["daily"]["precipitation_sum"][0]]})
@@ -120,7 +129,7 @@ if go:
                 "ScatterplotLayer",
                 data=data,
                 get_position='[lon, lat]',
-                get_color='[255, 0, 0, 160]',
+                get_color='[255, 0, 0, 100]',
                 get_radius=10000,
                 pickable=True,
                 opacity=0.3
@@ -153,4 +162,4 @@ if go:
                 for n in news:
                     st.markdown(f"- **{n['title']}**\n  _{n.get('pubDate','')}_\n  [🔗 Read more]({n['link']})")
             else:
-                st.info("No news articles found.")
+                st.info("No relevant flood-related news articles found.")
