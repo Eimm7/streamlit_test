@@ -81,7 +81,6 @@ def fetch_news():
 
 # --- Main forecast logic ---
 if go:
-    # Get coordinates from input or geocoding
     if coord_override and "," in coord_override:
         lat, lon = map(float, coord_override.split(","))
     else:
@@ -90,30 +89,30 @@ if go:
             st.error("Could not geolocate this district. Please enter coordinates manually.")
             st.stop()
 
-    # Fetch weather forecasts (WeatherAPI + Open-Meteo)
+    # Fetch forecasts
     w = session.get(f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14").json()
     o = session.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto").json()
 
-    # Prepare DataFrame for 14-day forecast
+    # Prepare DataFrame
     rain = [d["day"]["totalprecip_mm"] for d in w["forecast"]["forecastday"]]
     df = pd.DataFrame({
-        "Date":           [d["date"] for d in w["forecast"]["forecastday"]],
-        "Rain (mm)":      rain,
-        "Temp (°C)":      [d["day"]["maxtemp_c"] for d in w["forecast"]["forecastday"]],
-        "Humidity (%)":   [d["day"]["avghumidity"] for d in w["forecast"]["forecastday"]],
-        "Wind (kph)":     [d["day"]["maxwind_kph"] for d in w["forecast"]["forecastday"]],
+        "Date": [d["date"] for d in w["forecast"]["forecastday"]],
+        "Rain (mm)": rain,
+        "Temp (°C)": [d["day"]["maxtemp_c"] for d in w["forecast"]["forecastday"]],
+        "Humidity (%)": [d["day"]["avghumidity"] for d in w["forecast"]["forecastday"]],
+        "Wind (kph)": [d["day"]["maxwind_kph"] for d in w["forecast"]["forecastday"]],
     })
 
-    # Create dashboard tabs
+    # Tabs for different views
     tabs = st.tabs(["Forecast","Map","Trends","Risk Pie","History","News"])
 
-    # --- Forecast Tab ---
+    # Forecast tab
     with tabs[0]:
         lvl = risk_level(max(rain[0], o["daily"]["precipitation_sum"][0]))
         getattr(st, {"Extreme":"error","High":"warning","Moderate":"info","Low":"success"}[lvl])(f"{lvl} today – {tip(lvl)}")
         st.dataframe(df, use_container_width=True, height=600)
 
-    # --- Map Tab ---
+    # Map tab
     with tabs[1]:
         data = pd.DataFrame({"lat":[lat],"lon":[lon],"intensity":[o["daily"]["precipitation_sum"][0]]})
         st.pydeck_chart(pdk.Deck(
@@ -121,27 +120,27 @@ if go:
             layers=[pdk.Layer("HeatmapLayer", data=data, get_weight="intensity")]
         ))
 
-    # --- Trends Tab ---
+    # Trends tab
     with tabs[2]:
         st.line_chart(df.set_index("Date")[["Rain (mm)", "Temp (°C)"]])
         st.bar_chart(df.set_index("Date")["Humidity (%)"])
         st.area_chart(df.set_index("Date")["Wind (kph)"])
 
-    # --- Risk Pie Chart ---
+    # Pie chart tab
     with tabs[3]:
         counts = df["Rain (mm)"].map(risk_level).value_counts()
         plt.figure(figsize=(6,6))
         plt.pie(counts, labels=counts.index, autopct="%1.1f%%")
         st.pyplot(plt)
 
-    # --- Historical Comparison Tab ---
+    # History comparison
     with tabs[4]:
         h = df.copy()
         np.random.seed(0)
         h["HistRain"] = h["Rain (mm)"] + np.random.randint(-5,6,size=len(h))
         st.line_chart(h.set_index("Date")[["Rain (mm)", "HistRain"]])
 
-    # --- News Tab ---
+    # News tab
     with tabs[5]:
         news = fetch_news()
         if news:
