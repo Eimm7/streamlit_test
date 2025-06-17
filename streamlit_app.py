@@ -85,7 +85,7 @@ with col2:
 with col3:
     selected_date = st.date_input("🪖️ Pick a Date to Check Forecast", datetime.today())
 
-custom_location = st.text_input("🩱 Or type your own location (latitude,longitude) for more control")
+custom_location = st.text_input("type your own location (latitude,longitude) for more control")
 latlon = custom_location.split(',') if custom_location else []
 
 if len(latlon) == 2:
@@ -141,7 +141,7 @@ if confirmed:
         )
 
         st.caption(f"🔁 Open-Meteo URL: {om_url}")
-        om_response = requests.get(om_url)
+        om_response = retry_session.get(om_url)
 
         if om_response.status_code == 200:
             om_data = om_response.json().get("daily", {})
@@ -178,6 +178,6 @@ if confirmed:
             st.success("✅ Low rainfall. All clear.")
 
         st.markdown(f"### 🎓 Preparedness Tip: {preparedness_tips(level)}")
-        st.write("### 📿 14-Day Forecast Overview")
+        st.write("### 📟 14-Day Forecast Overview")
         st.dataframe(forecast_df, use_container_width=True, height=600)
         st.caption(f"Showing {len(forecast_df)} days of forecast from Open-Meteo")
