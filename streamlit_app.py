@@ -55,6 +55,8 @@ flood_map = {
 
 # --- 🧭 Sidebar: User Input ---
 with st.sidebar:
+    st.markdown("## 🌧️ **Flood Risk Buddy**")
+    st.caption("Malaysia Flood Risk Forecast & Updates")
     st.title("⚙️ Settings")
     state = st.selectbox("State", list(flood_map.keys()))
     district = st.selectbox("District", flood_map[state])
