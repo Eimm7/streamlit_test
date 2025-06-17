@@ -37,6 +37,8 @@ st.markdown("""
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 
+API_KEY = "1468e5c2a4b24ce7a64140429250306"
+
 # --------------------------------------------
 # 📍 City Coordinates (Flood-Prone Areas)
 # --------------------------------------------
@@ -100,7 +102,7 @@ else:
 confirmed = st.button("🔍 Get My Forecast")
 
 # --------------------------------------------
-# ⚠️ Risk Alerts
+# 📡 Weather Fetch Logic
 # --------------------------------------------
 def risk_level(rain):
     if rain > 50:
@@ -122,33 +124,32 @@ def preparedness_tips(level):
     else:
         return "Stay informed and maintain general awareness."
 
-# --------------------------------------------
-# 📊 Interactive Tabs
-# --------------------------------------------
+weather, om_rain = None, None
 if confirmed:
     try:
-        om_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max,humidity_2m_mean,windspeed_10m_max&timezone=auto"
-        om_response = requests.get(om_url)
-        if om_response.status_code == 200:
-            om_data = om_response.json()["daily"]
-            forecast_df = pd.DataFrame({
-                "Date": om_data["time"],
-                "Rainfall (mm)": om_data["precipitation_sum"],
-                "Max Temp (°C)": om_data["temperature_2m_max"],
-                "Humidity (%)": om_data["humidity_2m_mean"],
-                "Wind (kph)": om_data["windspeed_10m_max"]
-            })
-        else:
-            st.error("❌ Failed to fetch data from Open-Meteo.")
+        url = f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14"
+        response = requests.get(url)
+        if response.status_code == 200:
+            weather = response.json()
     except Exception as e:
-        st.error(f"❌ Error fetching forecast: {e}")
+        st.error(f"❌ WeatherAPI Error: {e}")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts", "🗕 Flood Risk Pie", "📈 Historical Comparison"])
+    try:
+        result = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto")
+        if result.status_code == 200:
+            om_rain = result.json()["daily"]["precipitation_sum"]
+    except Exception as e:
+        st.error(f"❌ Open-Meteo Error: {e}")
 
-    with tab1:
-        rain_today = forecast_df["Rainfall (mm)"].iloc[0]
-        level = risk_level(rain_today)
-
+# --------------------------------------------
+# ⚠️ Risk Alerts
+# --------------------------------------------
+def show_alert_box():
+    if weather and om_rain is not None:
+        rain_api = weather["forecast"]["forecastday"][0]["day"]["totalprecip_mm"]
+        rain_om = om_rain[0]
+        combined = max(rain_api, rain_om)
+        level = risk_level(combined)
         if level == "🔴 Extreme":
             st.error("🚨 EXTREME RAINFALL! Take action immediately!")
         elif level == "🟠 High":
@@ -159,9 +160,25 @@ if confirmed:
             st.success("✅ Low rainfall. All clear.")
 
         st.markdown(f"### 🎓 Preparedness Tip: {preparedness_tips(level)}")
+
+# --------------------------------------------
+# 📊 Interactive Tabs
+# --------------------------------------------
+if confirmed and weather:
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts", "🗕 Flood Risk Pie", "📈 Historical Comparison"])
+
+    with tab1:
+        show_alert_box()
         st.write("### 🧾 14-Day Forecast Overview")
+        forecast_df = pd.DataFrame({
+            "Date": [f["date"] for f in weather["forecast"]["forecastday"]],
+            "Rainfall (mm)": [f["day"]["totalprecip_mm"] for f in weather["forecast"]["forecastday"]],
+            "Max Temp (°C)": [f["day"]["maxtemp_c"] for f in weather["forecast"]["forecastday"]],
+            "Humidity (%)": [f["day"]["avghumidity"] for f in weather["forecast"]["forecastday"]],
+            "Wind (kph)": [f["day"]["maxwind_kph"] for f in weather["forecast"]["forecastday"]]
+        })
         st.dataframe(forecast_df, use_container_width=True, height=600)
-        st.caption(f"Showing {len(forecast_df)} days of forecast from Open-Meteo")
+        st.caption(f"Showing {len(forecast_df)} days of forecast")
 
     with tab2:
         st.subheader("🌍 Visual Rainfall Intensity Map")
@@ -169,7 +186,7 @@ if confirmed:
             "lat": [lat],
             "lon": [lon],
             "popup": [f"{selected_city}, {selected_state}"],
-            "intensity": [forecast_df["Rainfall (mm)"].iloc[0]]
+            "intensity": [om_rain[0] if om_rain is not None else 0]
         })
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/satellite-v9',
