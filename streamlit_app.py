@@ -105,7 +105,7 @@ if go:
         "Wind (kph)": [d["day"]["maxwind_kph"] for d in w["forecast"]["forecastday"]],
     })
 
-    tabs = st.tabs(["Forecast", "Map", "Trends", "Risk Pie", "History", "News"])
+    tabs = st.tabs(["🌧️ Rain Forecast", "Map", "Trends", "Risk Pie", "History", "News"])
 
     with tabs[0]:
         lvl = risk_level(max(rain[0], o["daily"]["precipitation_sum"][0]))
@@ -113,6 +113,12 @@ if go:
 
         st.subheader("📅 3-Day Forecast")
         st.dataframe(df.reset_index(drop=True), use_container_width=True)
+
+        st.subheader("📊 Past Rain Data (Mock)")
+        past_dates = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(1, 4)]
+        past_rain = np.random.randint(5, 60, size=3)
+        df_past = pd.DataFrame({"Date": past_dates[::-1], "Rain (mm)": past_rain[::-1]})
+        st.dataframe(df_past, use_container_width=True)
 
     with tabs[1]:
         data = pd.DataFrame({"lat":[lat],"lon":[lon],"intensity":[o["daily"]["precipitation_sum"][0]]})
