@@ -114,9 +114,9 @@ if go:
         st.subheader("📅 3-Day Forecast")
         st.dataframe(df.reset_index(drop=True), use_container_width=True)
 
-        st.subheader("📊 Past Rain Data (Mock)")
-        past_dates = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(1, 4)]
-        past_rain = np.random.randint(5, 60, size=3)
+        st.subheader("📊 Past Rain Data (Mock - 7 days)")
+        past_dates = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(1, 8)]
+        past_rain = np.random.randint(5, 60, size=7)
         df_past = pd.DataFrame({"Date": past_dates[::-1], "Rain (mm)": past_rain[::-1]})
         st.dataframe(df_past, use_container_width=True)
 
