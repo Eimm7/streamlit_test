@@ -1,6 +1,5 @@
 # --------------------------------------------
-# 🌧 Malaysia Flood Risk Buddy (User-Friendly Edition)
-# BVI1234 | Group VC24001 · VC24009 · VC24011
+# 🌧 Malaysia Flood Risk Buddy (Upgraded Edition)
 # --------------------------------------------
 
 import streamlit as st
@@ -27,7 +26,15 @@ st.markdown("""
     .main { background-color: #eef3f9; }
     .stButton button { background-color: #28a745; color: white; font-weight: bold; border-radius: 8px; }
     .stSelectbox label, .stDateInput label, .stTextInput label { font-weight: bold; }
-    .stTabs [data-baseweb=\"tab\"] button { font-weight: bold; }
+    .stTabs [data-baseweb="tab"] button { font-weight: bold; }
+    .news-card {
+        background-color: #ffffff;
+        border-left: 5px solid #0077b6;
+        padding: 16px;
+        margin-bottom: 10px;
+        border-radius: 6px;
+        box-shadow: 2px 2px 6px rgba(0,0,0,0.1);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -38,6 +45,7 @@ cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 
 API_KEY = "1468e5c2a4b24ce7a64140429250306"
+NEWS_API_KEY = "YOUR_API_KEY"  # <-- Replace with your NewsData.io API key
 
 # --------------------------------------------
 # 📍 City Coordinates (Flood-Prone Areas)
@@ -71,38 +79,29 @@ flood_map = {
 }
 
 # --------------------------------------------
-# 🪯 Welcome Panel
+# 📥 Sidebar Input
 # --------------------------------------------
-st.title("🌊 Your Personal Flood Buddy Risk-Check")
-st.markdown("Get real-time info, forecast, and visualize flood-prone conditions in Malaysia. Easy to use, fun to explore!")
+with st.sidebar:
+    st.title("🛠 Settings Panel")
+    selected_state = st.selectbox("Choose State", list(flood_map.keys()))
+    selected_city = st.selectbox("Choose City", list(flood_map[selected_state].keys()))
+    selected_date = st.date_input("Pick Forecast Date", datetime.today())
+    custom_location = st.text_input("Or type coordinates (lat,lon)")
+    latlon = custom_location.split(',') if custom_location else []
 
-st.markdown("---")
-
-st.subheader("📍 Location & Date Settings")
-col1, col2, col3 = st.columns(3)
-with col1:
-    selected_state = st.selectbox("🗺 Choose State", list(flood_map.keys()))
-with col2:
-    selected_city = st.selectbox("🏠 Choose City", list(flood_map[selected_state].keys()))
-with col3:
-    selected_date = st.date_input("🖖 Pick a Date to Check Forecast", datetime.today())
-
-custom_location = st.text_input("🧱 Or type your own location (latitude,longitude) for more control")
-latlon = custom_location.split(',') if custom_location else []
-
-if len(latlon) == 2:
-    try:
-        lat, lon = float(latlon[0]), float(latlon[1])
-    except:
-        st.warning("⚠ Format Error. Try: 3.0738,101.5183")
+    if len(latlon) == 2:
+        try:
+            lat, lon = float(latlon[0]), float(latlon[1])
+        except:
+            st.warning("⚠ Format Error. Try: 3.0738,101.5183")
+            lat, lon = flood_map[selected_state][selected_city]
+    else:
         lat, lon = flood_map[selected_state][selected_city]
-else:
-    lat, lon = flood_map[selected_state][selected_city]
 
-confirmed = st.button("🔍 Get My Forecast")
+    confirmed = st.button("🔍 Get My Forecast")
 
 # --------------------------------------------
-# 📡 Weather Fetch Logic
+# ⚠️ Risk Logic & Tips
 # --------------------------------------------
 def risk_level(rain):
     if rain > 50:
@@ -115,34 +114,46 @@ def risk_level(rain):
         return "🟢 Low"
 
 def preparedness_tips(level):
-    if level == "🔴 Extreme":
-        return "Evacuate if needed, keep emergency kit ready, avoid floodwaters."
-    elif level == "🟠 High":
-        return "Charge devices, prepare emergency contact list, avoid travel in low areas."
-    elif level == "🟡 Moderate":
-        return "Monitor local alerts, keep essentials ready, stay indoors during rain."
-    else:
-        return "Stay informed and maintain general awareness."
+    return {
+        "🔴 Extreme": "Evacuate if needed, keep emergency kit ready, avoid floodwaters.",
+        "🟠 High": "Charge devices, prepare emergency contact list, avoid travel in low areas.",
+        "🟡 Moderate": "Monitor local alerts, keep essentials ready, stay indoors during rain.",
+        "🟢 Low": "Stay informed and maintain general awareness."
+    }.get(level, "")
 
+def fetch_flood_news():
+    try:
+        url = f"https://newsdata.io/api/1/latest?apikey={NEWS_API_KEY}&q=flood%20in%20malaysia"
+        res = requests.get(url)
+        if res.status_code == 200:
+            return res.json().get("results", [])[:5]
+    except Exception as e:
+        st.error(f"🗞 News API Error: {e}")
+    return []
+
+# --------------------------------------------
+# 📡 Get Weather Data
+# --------------------------------------------
 weather, om_rain = None, None
 if confirmed:
     try:
-        url = f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14"
-        response = requests.get(url)
+        w_url = f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14"
+        response = requests.get(w_url)
         if response.status_code == 200:
             weather = response.json()
     except Exception as e:
         st.error(f"❌ WeatherAPI Error: {e}")
 
     try:
-        result = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto")
+        om_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto"
+        result = requests.get(om_url)
         if result.status_code == 200:
             om_rain = result.json()["daily"]["precipitation_sum"]
     except Exception as e:
         st.error(f"❌ Open-Meteo Error: {e}")
 
 # --------------------------------------------
-# ⚠ Risk Alerts
+# 🧾 Forecast Tab Logic
 # --------------------------------------------
 def show_alert_box():
     if weather and om_rain is not None:
@@ -150,6 +161,7 @@ def show_alert_box():
         rain_om = om_rain[0]
         combined = max(rain_api, rain_om)
         level = risk_level(combined)
+
         if level == "🔴 Extreme":
             st.error("🚨 EXTREME RAINFALL! Take action immediately!")
         elif level == "🟠 High":
@@ -162,10 +174,13 @@ def show_alert_box():
         st.markdown(f"### 🎓 Preparedness Tip: {preparedness_tips(level)}")
 
 # --------------------------------------------
-# 📊 Interactive Tabs
+# 📊 Tabs Output
 # --------------------------------------------
 if confirmed and weather:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗕 Forecast Calendar", "🗺 Live Map", "📈 Trend Charts", "📅 Flood Risk Pie", "📈 Historical Comparison"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "🗕 Forecast Calendar", "🗺 Live Map", "📈 Trend Charts",
+        "📅 Flood Risk Pie", "📈 Historical Comparison", "🗞 Flood News"
+    ])
 
     with tab1:
         show_alert_box()
@@ -177,11 +192,11 @@ if confirmed and weather:
             "Humidity (%)": [f["day"]["avghumidity"] for f in weather["forecast"]["forecastday"]],
             "Wind (kph)": [f["day"]["maxwind_kph"] for f in weather["forecast"]["forecastday"]]
         })
-        st.dataframe(forecast_df, use_container_width=True)
+        st.dataframe(forecast_df.style.set_properties(**{'text-align': 'center'}), height=600, use_container_width=True)
 
     with tab2:
         st.subheader("🌍 Visual Rainfall Intensity Map")
-        map_df = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [om_rain[0] if om_rain is not None else 0]})
+        map_df = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [om_rain[0] if om_rain else 0]})
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/satellite-v9',
             initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8, pitch=40),
@@ -210,3 +225,18 @@ if confirmed and weather:
         historical_df = forecast_df.copy()
         historical_df["Historical Rainfall"] = forecast_df["Rainfall (mm)"].apply(lambda x: max(0, x - np.random.randint(-5, 5)))
         st.line_chart(historical_df.set_index("Date")[["Rainfall (mm)", "Historical Rainfall"]])
+
+    with tab6:
+        st.subheader("📰 Latest Flood News in Malaysia")
+        news_list = fetch_flood_news()
+        if news_list:
+            for item in news_list:
+                st.markdown(f"""
+                    <div class="news-card">
+                        <strong>{item['title']}</strong><br>
+                        <small>{item.get("pubDate", "")}</small><br>
+                        <a href="{item['link']}" target="_blank">🔗 Read more</a>
+                    </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No recent flood news found.")
