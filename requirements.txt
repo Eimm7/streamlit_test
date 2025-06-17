@@ -6,3 +6,4 @@ pandas
 pydeck
 numpy
 matplotlib
+geopy
