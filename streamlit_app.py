@@ -12,7 +12,6 @@ from datetime import datetime
 import openmeteo_requests
 import requests_cache
 from retry_requests import retry
-import time
 
 # --------------------------------------------
 # 🎨 Page Setup
@@ -28,6 +27,7 @@ st.markdown("""
     .main { background-color: #f0f2f6; }
     .stButton button { background-color: #007BFF; color: white; font-weight: bold; }
     .stSelectbox label, .stDateInput label { font-weight: bold; }
+    .stTabs [data-baseweb="tab"] button { font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -70,10 +70,9 @@ flood_map = {
 }
 
 # --------------------------------------------
-# 📅 User Selections Interface
+# 📅 User Interface
 # --------------------------------------------
 st.title("🌧 Malaysia Flood Risk Forecast Dashboard")
-
 col1, col2, col3 = st.columns(3)
 with col1:
     selected_state = st.selectbox("📍 Select State", list(flood_map.keys()))
@@ -86,7 +85,7 @@ lat, lon = flood_map[selected_state][selected_city]
 confirmed = st.button("✅ Confirm Selection")
 
 # --------------------------------------------
-# 📡 Fetch WeatherAPI + Open-Meteo Data
+# 📡 Fetch Data from WeatherAPI + Open-Meteo
 # --------------------------------------------
 def risk_level(rain):
     if rain > 50:
@@ -98,78 +97,78 @@ def risk_level(rain):
     else:
         return "🟢 Low"
 
-weather = None
-om_rain = None
+weather, om_rain = None, None
 if confirmed:
     try:
-        weather_url = f"https://api.weatherapi.com/v1/forecast.json?key=YOUR_API_KEY&q={lat},{lon}&days=7"
-        weather_response = requests.get(weather_url)
-        if weather_response.status_code == 200:
-            weather = weather_response.json()
-    except:
-        st.error("❌ Failed to get WeatherAPI.")
+        url = f"https://api.weatherapi.com/v1/forecast.json?key=YOUR_API_KEY&q={lat},{lon}&days=7"
+        response = requests.get(url)
+        if response.status_code == 200:
+            weather = response.json()
+    except Exception as e:
+        st.error(f"❌ WeatherAPI Error: {e}")
 
     try:
-        om_response = openmeteo.weather_forecast(
-            latitude=lat, longitude=lon, daily=["precipitation_sum"], timezone="auto")
-        om_data = om_response.Daily()
-        om_rain = om_data.Variables(0).ValuesAsNumpy()
-    except:
-        st.error("❌ Failed to get Open-Meteo.")
+        result = openmeteo.weather_forecast(latitude=lat, longitude=lon, daily=["precipitation_sum"], timezone="auto")
+        om_rain = result.Daily().Variables(0).ValuesAsNumpy()
+    except Exception as e:
+        st.error(f"❌ Open-Meteo Error: {e}")
 
 # --------------------------------------------
-# ⚠️ Real-Time Alert Banner
+# ⚠️ Real-Time Alert Function
 # --------------------------------------------
 def show_alert_box():
     if weather and om_rain is not None:
         rain_api = weather["forecast"]["forecastday"][0]["day"]["totalprecip_mm"]
         rain_om = om_rain[0]
-        combined_rain = max(rain_api, rain_om)
-        level = risk_level(combined_rain)
+        combined = max(rain_api, rain_om)
+        level = risk_level(combined)
         if level == "🔴 Extreme":
-            st.error("🚨 REAL-TIME ALERT: Extreme rainfall today. Immediate flood risk!")
+            st.error("🚨 EXTREME RAINFALL! Immediate flood risk!")
         elif level == "🟠 High":
-            st.warning("⚠️ ALERT: High rainfall recorded today. Stay alert.")
+            st.warning("⚠️ High rainfall. Be alert.")
         elif level == "🟡 Moderate":
-            st.info("🔎 Moderate rainfall. Monitor local news.")
+            st.info("🔎 Moderate rain. Monitor updates.")
         else:
-            st.success("✅ Low rainfall. Minimal flood risk.")
+            st.success("✅ Low rainfall today.")
 
-if confirmed:
-    show_alert_box()
-
-# 🗺️ Map View (Heatmap + Points)
-if confirmed:
-    st.subheader("🗺️ Rainfall Risk Map")
-    map_data = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [om_rain[0] if om_rain is not None else 0]})
-    st.pydeck_chart(pdk.Deck(
-        map_style='mapbox://styles/mapbox/light-v9',
-        initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8, pitch=40),
-        layers=[
-            pdk.Layer("ScatterplotLayer",
-                      data=map_data,
-                      get_position='[lon, lat]',
-                      get_color='[200, 30, 0, 160]',
-                      get_radius=3000),
-            pdk.Layer("HeatmapLayer",
-                      data=map_data,
-                      get_position='[lon, lat]',
-                      aggregation='MEAN',
-                      get_weight='intensity')
-        ]
-    ))
-
-# 📊 Charts
+# --------------------------------------------
+# 📊 Tabbed Display
+# --------------------------------------------
 if confirmed and weather:
-    st.subheader("📈 Rainfall & Weather Monitoring")
-    df = pd.DataFrame({
-        "Date": [d["date"] for d in weather["forecast"]["forecastday"]],
-        "Rain (mm)": [d["day"]["totalprecip_mm"] for d in weather["forecast"]["forecastday"]],
-        "Humidity (%)": [d["day"]["avghumidity"] for d in weather["forecast"]["forecastday"]],
-        "Wind (kph)": [d["day"]["maxwind_kph"] for d in weather["forecast"]["forecastday"]]
-    })
-    st.line_chart(df.set_index("Date")[["Rain (mm)", "Humidity (%)"]])
-    st.bar_chart(df.set_index("Date")["Wind (kph)"])
-    st.area_chart(df.set_index("Date")["Rain (mm)"])
+    tab1, tab2, tab3 = st.tabs(["📅 Forecast", "🗺️ Map", "📊 Monitoring"])
 
-# End of script
+    with tab1:
+        show_alert_box()
+        st.write("### 7-Day Forecast Summary")
+        forecast_df = pd.DataFrame({
+            "Date": [f["date"] for f in weather["forecast"]["forecastday"]],
+            "Rainfall (mm)": [f["day"]["totalprecip_mm"] for f in weather["forecast"]["forecastday"]],
+            "Max Temp (°C)": [f["day"]["maxtemp_c"] for f in weather["forecast"]["forecastday"]]
+        })
+        st.dataframe(forecast_df)
+
+    with tab2:
+        st.subheader("🗺️ Rainfall Risk Map")
+        map_df = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [om_rain[0] if om_rain is not None else 0]})
+        st.pydeck_chart(pdk.Deck(
+            map_style='mapbox://styles/mapbox/light-v9',
+            initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8, pitch=40),
+            layers=[
+                pdk.Layer("ScatterplotLayer", data=map_df, get_position='[lon, lat]', get_color='[200, 30, 0, 160]', get_radius=3000),
+                pdk.Layer("HeatmapLayer", data=map_df, get_position='[lon, lat]', aggregation='MEAN', get_weight='intensity')
+            ]
+        ))
+
+    with tab3:
+        st.subheader("📈 7-Day Monitoring Charts")
+        df = pd.DataFrame({
+            "Date": [d["date"] for d in weather["forecast"]["forecastday"]],
+            "Rain (mm)": [d["day"]["totalprecip_mm"] for d in weather["forecast"]["forecastday"]],
+            "Humidity (%)": [d["day"]["avghumidity"] for d in weather["forecast"]["forecastday"]],
+            "Wind (kph)": [d["day"]["maxwind_kph"] for d in weather["forecast"]["forecastday"]]
+        })
+        st.line_chart(df.set_index("Date")["Rain (mm)"])
+        st.bar_chart(df.set_index("Date")["Humidity (%)"])
+        st.area_chart(df.set_index("Date")["Wind (kph)"])
+
+# End of Dashboard
