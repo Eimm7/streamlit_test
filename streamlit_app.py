@@ -1,31 +1,30 @@
+# --- Flood Risk Buddy App ---
 import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import pydeck as pdk
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests_cache
 from retry_requests import retry
 from geopy.geocoders import Nominatim
 
-# --- Page Configuration and Styling ---
+# --- Page config & styling ---
 st.set_page_config(page_title="Flood Buddy - Malaysia", page_icon="☔", layout="wide")
 st.markdown("""
 <style>
 .stButton button { background:#28a745;color:#fff;font-weight:bold;border-radius:8px; }
-.news-card { background:#eef6f9;border-left:5px solid #0077b6;padding:16px;margin:10px 0;border-radius:6px;
-             box-shadow:2px 2px 6px rgba(0,0,0,0.1); }
 </style>
 """, unsafe_allow_html=True)
 
-# --- API Keys and Session Setup ---
-API_KEY = "1468e5c2a4b24ce7a64140429250306"  # WeatherAPI
-NEWS_API_KEY = "pub_6b426fe08efa4436a4cd58ec988c62e0"  # NewsData
+# --- API keys & session setup ---
+API_KEY = "1468e5c2a4b24ce7a64140429250306"  # WeatherAPI key
+NEWS_API_KEY = "pub_6b426fe08efa4436a4cd58ec988c62e0"  # NewsData API key
 session = retry(requests_cache.CachedSession('.cache', expire_after=3600), retries=5, backoff_factor=0.2)
 geolocator = Nominatim(user_agent="flood-buddy-app")
 
-# --- Flood-prone Districts in Malaysia ---
+# --- Flood-prone districts across Malaysia ---
 flood_map = {
     "Selangor": ["Shah Alam", "Petaling", "Klang", "Gombak", "Hulu Langat", "Sabak Bernam"],
     "Johor": ["Johor Bahru", "Batu Pahat", "Muar", "Kluang", "Segamat", "Kota Tinggi"],
@@ -42,7 +41,7 @@ flood_map = {
     "Perlis": ["Kangar", "Arau"]
 }
 
-# --- Sidebar: User Input ---
+# --- Sidebar for user inputs ---
 with st.sidebar:
     st.title("⚙️ Settings")
     state = st.selectbox("State", list(flood_map.keys()))
@@ -51,7 +50,7 @@ with st.sidebar:
     coord_override = st.text_input("Or enter coords manually (lat,lon)")
     go = st.button("🔍 Get Forecast")
 
-# --- Helper Functions ---
+# --- Helper functions ---
 def risk_level(r):
     return "Extreme" if r > 50 else "High" if r > 30 else "Moderate" if r > 10 else "Low"
 
@@ -70,16 +69,15 @@ def get_coords(state, district):
     except:
         return (None, None)
 
-def fetch_news():
+def fetch_news(search_term):
     try:
-        r = session.get(f"https://newsdata.io/api/1/latest?apikey={NEWS_API_KEY}&q=flood%20malaysia")
-        return r.json().get("results", [])[:5]
+        r = session.get(f"https://newsdata.io/api/1/news?apikey={NEWS_API_KEY}&q={search_term}%20flood%20malaysia")
+        return r.json().get("results", [])
     except:
         return []
 
 # --- Main Forecast Logic ---
 if go:
-    # Determine coordinates
     if coord_override and "," in coord_override:
         lat, lon = map(float, coord_override.split(","))
     else:
@@ -88,77 +86,71 @@ if go:
             st.error("Could not geolocate this district. Please enter coordinates manually.")
             st.stop()
 
-    try:
-        w = session.get(f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14").json()
-        o = session.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto").json()
-        forecast_data = w.get("forecast", {}).get("forecastday", [])
-        if not forecast_data:
-            st.warning("No forecast data available. Try a different district or check the API.")
-            st.stop()
+    today = datetime.today()
+    start_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+    end_date = (today + timedelta(days=7)).strftime("%Y-%m-%d")
 
-        df = pd.DataFrame({
-            "Date": [d["date"] for d in forecast_data],
-            "Rain (mm)": [d["day"]["totalprecip_mm"] for d in forecast_data],
-            "Temp (°C)": [d["day"]["maxtemp_c"] for d in forecast_data],
-            "Humidity (%)": [d["day"]["avghumidity"] for d in forecast_data],
-            "Wind (kph)": [d["day"]["maxwind_kph"] for d in forecast_data],
-        })
+    # Fetch forecasts from WeatherAPI and Open-Meteo
+    w = session.get(f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14").json()
+    o = session.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&start_date={start_date}&end_date={end_date}&daily=precipitation_sum&timezone=auto").json()
 
-        tabs = st.tabs(["Forecast","Map","Trends","Risk Pie","History","News"])
+    # Prepare Forecast Table
+    rain = [d["day"]["totalprecip_mm"] for d in w["forecast"]["forecastday"]]
+    df = pd.DataFrame({
+        "Date": [d["date"] for d in w["forecast"]["forecastday"]],
+        "Rain (mm)": rain,
+        "Temp (°C)": [d["day"]["maxtemp_c"] for d in w["forecast"]["forecastday"]],
+        "Humidity (%)": [d["day"]["avghumidity"] for d in w["forecast"]["forecastday"]],
+        "Wind (kph)": [d["day"]["maxwind_kph"] for d in w["forecast"]["forecastday"]],
+    })
 
-        with tabs[0]:
-            lvl = risk_level(max(df["Rain (mm)"].iloc[0], o["daily"]["precipitation_sum"][0] if "daily" in o else 0))
-            getattr(st, {"Extreme":"error","High":"warning","Moderate":"info","Low":"success"}[lvl])(f"{lvl} today – {tip(lvl)}")
-            st.dataframe(df, use_container_width=True, height=600)
+    # Tabs for views
+    tabs = st.tabs(["Forecast", "Map", "Trends", "Risk Pie", "History", "News"])
 
-        with tabs[1]:
-            data = pd.DataFrame({
-                "lat": [lat],
-                "lon": [lon],
-                "intensity": [o.get("daily", {}).get("precipitation_sum", [0])[0]],
-                "note": [f"{district}, {state}\nRain: {df['Rain (mm)'][0]} mm"]
-            })
-            st.pydeck_chart(pdk.Deck(
-                initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8),
-                layers=[
-                    pdk.Layer("HeatmapLayer", data=data, get_weight="intensity", opacity=0.4),
-                    pdk.Layer("ScatterplotLayer", data=data, get_position='[lon, lat]', get_radius=4000, get_fill_color='[0, 0, 255, 80]', pickable=True)
-                ],
-                tooltip={"text": "{note}"}
-            ))
+    with tabs[0]:
+        lvl = risk_level(max(rain[0], o["daily"]["precipitation_sum"][0]))
+        getattr(st, {"Extreme":"error","High":"warning","Moderate":"info","Low":"success"}[lvl])(f"{lvl} today – {tip(lvl)}")
+        st.dataframe(df, use_container_width=True, height=600)
 
-        with tabs[2]:
-            st.line_chart(df.set_index("Date")[ ["Rain (mm)", "Temp (°C)"] ])
-            st.bar_chart(df.set_index("Date")["Humidity (%)"])
-            st.area_chart(df.set_index("Date")["Wind (kph)"])
+    with tabs[1]:
+        data = pd.DataFrame({"lat":[lat],"lon":[lon],"intensity":[o["daily"]["precipitation_sum"][0]]})
+        st.pydeck_chart(pdk.Deck(
+            initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8),
+            layers=[pdk.Layer(
+                "ScatterplotLayer",
+                data=data,
+                get_position='[lon, lat]',
+                get_color='[255, 0, 0, 160]',
+                get_radius=10000,
+                pickable=True,
+                opacity=0.3
+            )],
+            tooltip={"text": f"Location: {district}, {state}"}
+        ))
 
-        with tabs[3]:
-            counts = df["Rain (mm)"].map(risk_level).value_counts()
-            if not counts.empty:
-                plt.figure(figsize=(6,6))
-                plt.pie(counts, labels=counts.index, autopct="%1.1f%%")
-                st.pyplot(plt)
-            else:
-                st.info("No risk level data available to generate pie chart.")
+    with tabs[2]:
+        st.line_chart(df.set_index("Date")[["Rain (mm)", "Temp (°C)"]])
+        st.bar_chart(df.set_index("Date")["Humidity (%)"])
+        st.area_chart(df.set_index("Date")["Wind (kph)"])
 
-        with tabs[4]:
-            h = df.copy()
-            np.random.seed(0)
-            h["HistRain"] = h["Rain (mm)"] + np.random.randint(-5,6,size=len(h))
-            st.line_chart(h.set_index("Date")[["Rain (mm)", "HistRain"]])
+    with tabs[3]:
+        counts = df["Rain (mm)"].map(risk_level).value_counts()
+        plt.figure(figsize=(6,6))
+        plt.pie(counts, labels=counts.index, autopct="%1.1f%%")
+        st.pyplot(plt)
 
-        with tabs[5]:
-            news = fetch_news()
+    with tabs[4]:
+        h = df.copy()
+        np.random.seed(0)
+        h["HistRain"] = h["Rain (mm)"] + np.random.randint(-5,6,size=len(h))
+        st.line_chart(h.set_index("Date")[["Rain (mm)", "HistRain"]])
+
+    with tabs[5]:
+        search_term = st.text_input("Search flood news for Malaysia:", "flood")
+        if search_term:
+            news = fetch_news(search_term)
             if news:
                 for n in news:
-                    st.markdown(f"""
-                    <div class=\"news-card\">
-                      <strong>{n['title']}</strong><br><small>{n.get('pubDate','')}</small><br>
-                      <a href=\"{n['link']}\" target=\"_blank\">🔗 Read more</a>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(f"- **{n['title']}**\n  _{n.get('pubDate','')}_\n  [🔗 Read more]({n['link']})")
             else:
-                st.info("No recent flood news found.")
-
-    except Exception as e:
-        st.error(f"Something went wrong while fetching forecast data: {e}")
+                st.info("No news articles found.")
