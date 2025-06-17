@@ -70,14 +70,14 @@ flood_map = {
 }
 
 # --------------------------------------------
-# 📅 User Interface
+# 🗓️ User Interface
 # --------------------------------------------
 st.title("🌧 Malaysia Flood Risk Forecast Dashboard")
 col1, col2, col3 = st.columns(3)
 with col1:
     selected_state = st.selectbox("📍 Select State", list(flood_map.keys()))
 with col2:
-    selected_city = st.selectbox("🌇 Select City", list(flood_map[selected_state].keys()))
+    selected_city = st.selectbox("🏠 Select City", list(flood_map[selected_state].keys()))
 with col3:
     selected_date = st.date_input("📆 Select Date", datetime.today())
 
@@ -108,7 +108,7 @@ if confirmed:
         st.error(f"❌ WeatherAPI Error: {e}")
 
     try:
-        result = openmeteo.weather_forecast(latitude=lat, longitude=lon, daily=["precipitation_sum"], timezone="auto")
+        result = openmeteo.weather_api(latitude=lat, longitude=lon, daily=["precipitation_sum"], timezone="auto")
         om_rain = result.Daily().Variables(0).ValuesAsNumpy()
     except Exception as e:
         st.error(f"❌ Open-Meteo Error: {e}")
@@ -135,7 +135,7 @@ def show_alert_box():
 # 📊 Tabbed Display
 # --------------------------------------------
 if confirmed and weather:
-    tab1, tab2, tab3 = st.tabs(["📅 Forecast", "🗺️ Map", "📊 Monitoring"])
+    tab1, tab2, tab3 = st.tabs(["🗓️ Forecast", "🗼️ Map", "📊 Monitoring"])
 
     with tab1:
         show_alert_box()
@@ -148,7 +148,7 @@ if confirmed and weather:
         st.dataframe(forecast_df)
 
     with tab2:
-        st.subheader("🗺️ Rainfall Risk Map")
+        st.subheader("🗼️ Rainfall Risk Map")
         map_df = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [om_rain[0] if om_rain is not None else 0]})
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/light-v9',
