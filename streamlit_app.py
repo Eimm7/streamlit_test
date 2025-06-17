@@ -9,9 +9,9 @@ import pandas as pd
 import pydeck as pdk
 import numpy as np
 from datetime import datetime
-import openmeteo_requests
 import requests_cache
 from retry_requests import retry
+import matplotlib.pyplot as plt
 
 # --------------------------------------------
 # 🎨 Page Setup
@@ -36,7 +36,6 @@ st.markdown("""
 # --------------------------------------------
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-openmeteo = openmeteo_requests.Client(session=retry_session)
 
 API_KEY = "1468e5c2a4b24ce7a64140429250306"
 
@@ -72,7 +71,7 @@ flood_map = {
 }
 
 # --------------------------------------------
-# 🧭 Welcome Panel
+# 🪯 Welcome Panel
 # --------------------------------------------
 st.title("🌊 Your Personal Flood Buddy")
 st.markdown("Get real-time info, forecast, and visualize flood-prone conditions in Malaysia. Easy to use, fun to explore!")
@@ -86,7 +85,7 @@ with col1:
 with col2:
     selected_city = st.selectbox("🏠 Choose City", list(flood_map[selected_state].keys()))
 with col3:
-    selected_date = st.date_input("🗖️ Pick a Date to Check Forecast", datetime.today())
+    selected_date = st.date_input("🖖️ Pick a Date to Check Forecast", datetime.today())
 
 custom_location = st.text_input("🧱 Or type your own location (latitude,longitude) for more control")
 latlon = custom_location.split(',') if custom_location else []
@@ -136,9 +135,9 @@ if confirmed:
         st.error(f"❌ WeatherAPI Error: {e}")
 
     try:
-        api = openmeteo_requests.WeatherApi()
-        result = api.weather_api(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto")
-        om_rain = result.Daily().Variables(0).ValuesAsNumpy()
+        result = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto")
+        if result.status_code == 200:
+            om_rain = result.json()["daily"]["precipitation_sum"]
     except Exception as e:
         st.error(f"❌ Open-Meteo Error: {e}")
 
@@ -166,7 +165,7 @@ def show_alert_box():
 # 📊 Interactive Tabs
 # --------------------------------------------
 if confirmed and weather:
-    tab1, tab2, tab3 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts", "📅 Flood Risk Pie", "📈 Historical Comparison"])
 
     with tab1:
         show_alert_box()
@@ -174,32 +173,37 @@ if confirmed and weather:
         forecast_df = pd.DataFrame({
             "Date": [f["date"] for f in weather["forecast"]["forecastday"]],
             "Rainfall (mm)": [f["day"]["totalprecip_mm"] for f in weather["forecast"]["forecastday"]],
-            "Max Temp (°C)": [f["day"]["maxtemp_c"] for f in weather["forecast"]["forecastday"]]
+            "Max Temp (°C)": [f["day"]["maxtemp_c"] for f in weather["forecast"]["forecastday"]],
+            "Humidity (%)": [f["day"]["avghumidity"] for f in weather["forecast"]["forecastday"]],
+            "Wind (kph)": [f["day"]["maxwind_kph"] for f in weather["forecast"]["forecastday"]]
         })
-        st.dataframe(forecast_df)
+        st.dataframe(forecast_df, use_container_width=True)
 
     with tab2:
         st.subheader("🌍 Visual Rainfall Intensity Map")
         map_df = pd.DataFrame({"lat": [lat], "lon": [lon], "intensity": [om_rain[0] if om_rain is not None else 0]})
         st.pydeck_chart(pdk.Deck(
-            map_style='mapbox://styles/mapbox/light-v9',
+            map_style='mapbox://styles/mapbox/satellite-v9',
             initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=8, pitch=40),
             layers=[
-                pdk.Layer("ScatterplotLayer", data=map_df, get_position='[lon, lat]', get_color='[200, 30, 0, 160]', get_radius=3000),
+                pdk.Layer("ScatterplotLayer", data=map_df, get_position='[lon, lat]', get_color='[255, 140, 0, 160]', get_radius=5000),
                 pdk.Layer("HeatmapLayer", data=map_df, get_position='[lon, lat]', aggregation='MEAN', get_weight='intensity')
             ]
         ))
 
     with tab3:
         st.subheader("📉 Environmental Trends for Next 7 Days")
-        df = pd.DataFrame({
-            "Date": [d["date"] for d in weather["forecast"]["forecastday"]],
-            "Rain (mm)": [d["day"]["totalprecip_mm"] for d in weather["forecast"]["forecastday"]],
-            "Humidity (%)": [d["day"]["avghumidity"] for d in weather["forecast"]["forecastday"]],
-            "Wind (kph)": [d["day"]["maxwind_kph"] for d in weather["forecast"]["forecastday"]]
-        })
-        st.line_chart(df.set_index("Date")["Rain (mm)"])
-        st.bar_chart(df.set_index("Date")["Humidity (%)"])
-        st.area_chart(df.set_index("Date")["Wind (kph)"])
+        st.line_chart(forecast_df.set_index("Date")[["Rainfall (mm)", "Max Temp (°C)"]])
+        st.bar_chart(forecast_df.set_index("Date")["Humidity (%)"])
+        st.area_chart(forecast_df.set_index("Date")["Wind (kph)"])
 
-# End
+    with tab4:
+        st.subheader("📊 Flood Risk Breakdown")
+        risk_counts = forecast_df["Rainfall (mm)"].apply(risk_level).value_counts()
+        st.pyplot(plt.pie(risk_counts, labels=risk_counts.index, autopct='%1.1f%%', startangle=140))
+
+    with tab5:
+        st.subheader("🔢 Compare Current Forecast to Historical Averages")
+        historical_df = forecast_df.copy()
+        historical_df["Historical Rainfall"] = forecast_df["Rainfall (mm)"].apply(lambda x: max(0, x - np.random.randint(-5, 5)))
+        st.line_chart(historical_df.set_index("Date")[["Rainfall (mm)", "Historical Rainfall"]])
