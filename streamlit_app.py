@@ -27,7 +27,7 @@ st.markdown("""
     .main { background-color: #eef3f9; }
     .stButton button { background-color: #28a745; color: white; font-weight: bold; border-radius: 8px; }
     .stSelectbox label, .stDateInput label, .stTextInput label { font-weight: bold; }
-    .stTabs [data-baseweb=\"tab\"] button { font-weight: bold; }
+    .stTabs [data-baseweb="tab"] button { font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -36,8 +36,6 @@ st.markdown("""
 # --------------------------------------------
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-
-API_KEY = "1468e5c2a4b24ce7a64140429250306"
 
 # --------------------------------------------
 # 📍 City Coordinates (Flood-Prone Areas)
@@ -75,9 +73,9 @@ flood_map = {
 # --------------------------------------------
 st.title("🌊 Your Personal Flood Buddy Risk-Check")
 st.markdown("Get real-time info, forecast, and visualize flood-prone conditions in Malaysia. Easy to use, fun to explore!")
-
 st.markdown("---")
 
+# 📌 Location and date inputs
 st.subheader("📍 Location & Date Settings")
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -102,7 +100,7 @@ else:
 confirmed = st.button("🔍 Get My Forecast")
 
 # --------------------------------------------
-# 📡 Weather Fetch Logic
+# ⚠️ Risk Alerts Logic
 # --------------------------------------------
 def risk_level(rain):
     if rain > 50:
@@ -124,32 +122,34 @@ def preparedness_tips(level):
     else:
         return "Stay informed and maintain general awareness."
 
-weather, om_rain = None, None
+# --------------------------------------------
+# 📊 Tabs and Forecast Logic
+# --------------------------------------------
 if confirmed:
     try:
-        url = f"https://api.weatherapi.com/v1/forecast.json?key={API_KEY}&q={lat},{lon}&days=14"
-        response = requests.get(url)
-        if response.status_code == 200:
-            weather = response.json()
+        om_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max,humidity_2m_mean,windspeed_10m_max&forecast_days=14&timezone=auto"
+        om_response = requests.get(om_url)
+        if om_response.status_code == 200:
+            om_data = om_response.json()["daily"]
+            forecast_df = pd.DataFrame({
+                "Date": om_data["time"],
+                "Rainfall (mm)": om_data["precipitation_sum"],
+                "Max Temp (°C)": om_data["temperature_2m_max"],
+                "Humidity (%)": om_data["humidity_2m_mean"],
+                "Wind (kph)": om_data["windspeed_10m_max"]
+            })
+        else:
+            st.error("❌ Failed to fetch data from Open-Meteo.")
     except Exception as e:
-        st.error(f"❌ WeatherAPI Error: {e}")
+        st.error(f"❌ Error fetching forecast: {e}")
 
-    try:
-        result = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=auto")
-        if result.status_code == 200:
-            om_rain = result.json()["daily"]["precipitation_sum"]
-    except Exception as e:
-        st.error(f"❌ Open-Meteo Error: {e}")
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts", "🗕 Flood Risk Pie", "📈 Historical Comparison"])
 
-# --------------------------------------------
-# ⚠️ Risk Alerts
-# --------------------------------------------
-def show_alert_box():
-    if weather and om_rain is not None:
-        rain_api = weather["forecast"]["forecastday"][0]["day"]["totalprecip_mm"]
-        rain_om = om_rain[0]
-        combined = max(rain_api, rain_om)
-        level = risk_level(combined)
+    # 📅 Tab 1: Calendar and Risk Tip
+    with tab1:
+        rain_today = forecast_df["Rainfall (mm)"].iloc[0]
+        level = risk_level(rain_today)
+
         if level == "🔴 Extreme":
             st.error("🚨 EXTREME RAINFALL! Take action immediately!")
         elif level == "🟠 High":
@@ -160,33 +160,18 @@ def show_alert_box():
             st.success("✅ Low rainfall. All clear.")
 
         st.markdown(f"### 🎓 Preparedness Tip: {preparedness_tips(level)}")
-
-# --------------------------------------------
-# 📊 Interactive Tabs
-# --------------------------------------------
-if confirmed and weather:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗕️ Forecast Calendar", "🗺️ Live Map", "📈 Trend Charts", "🗕 Flood Risk Pie", "📈 Historical Comparison"])
-
-    with tab1:
-        show_alert_box()
         st.write("### 🧾 14-Day Forecast Overview")
-        forecast_df = pd.DataFrame({
-            "Date": [f["date"] for f in weather["forecast"]["forecastday"]],
-            "Rainfall (mm)": [f["day"]["totalprecip_mm"] for f in weather["forecast"]["forecastday"]],
-            "Max Temp (°C)": [f["day"]["maxtemp_c"] for f in weather["forecast"]["forecastday"]],
-            "Humidity (%)": [f["day"]["avghumidity"] for f in weather["forecast"]["forecastday"]],
-            "Wind (kph)": [f["day"]["maxwind_kph"] for f in weather["forecast"]["forecastday"]]
-        })
         st.dataframe(forecast_df, use_container_width=True, height=600)
-        st.caption(f"Showing {len(forecast_df)} days of forecast")
+        st.caption(f"Showing {len(forecast_df)} days of forecast from Open-Meteo")
 
+    # 🌍 Tab 2: Map
     with tab2:
         st.subheader("🌍 Visual Rainfall Intensity Map")
         map_df = pd.DataFrame({
             "lat": [lat],
             "lon": [lon],
             "popup": [f"{selected_city}, {selected_state}"],
-            "intensity": [om_rain[0] if om_rain is not None else 0]
+            "intensity": [forecast_df["Rainfall (mm)"].iloc[0]]
         })
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/satellite-v9',
@@ -204,12 +189,49 @@ if confirmed and weather:
             tooltip={"text": "{popup}\nIntensity: {intensity} mm"}
         ))
 
+    # 📈 Tab 3: Trend Charts with Rainfall Bar and Filters
     with tab3:
         st.subheader("📉 Environmental Trends for Next 14 Days")
-        st.line_chart(forecast_df.set_index("Date")[["Rainfall (mm)", "Max Temp (°C)"]])
-        st.bar_chart(forecast_df.set_index("Date")["Humidity (%)"])
-        st.area_chart(forecast_df.set_index("Date")["Wind (kph)"])
 
+        # 🔍 Interactive date range filter
+        date_range = st.slider(
+            "📆 Select date range to display:",
+            min_value=pd.to_datetime(forecast_df["Date"].iloc[0]),
+            max_value=pd.to_datetime(forecast_df["Date"].iloc[-1]),
+            value=(pd.to_datetime(forecast_df["Date"].iloc[0]), pd.to_datetime(forecast_df["Date"].iloc[-1])),
+            format="YYYY-MM-DD"
+        )
+
+        filtered_df = forecast_df[
+            (pd.to_datetime(forecast_df["Date"]) >= date_range[0]) &
+            (pd.to_datetime(forecast_df["Date"]) <= date_range[1])
+        ]
+
+        st.line_chart(filtered_df.set_index("Date")[["Rainfall (mm)", "Max Temp (°C)"]])
+
+        # 🎨 Risk-level colored rainfall bar chart
+        st.subheader("🌧️ Daily Rainfall with Risk Colors")
+        bar_colors = filtered_df["Rainfall (mm)"].apply(
+            lambda x: "#d9534f" if x > 50 else "#f0ad4e" if x > 30 else "#f7ec59" if x > 10 else "#5cb85c"
+        )
+
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.bar(filtered_df["Date"], filtered_df["Rainfall (mm)"], color=bar_colors)
+        ax.set_ylabel("Rainfall (mm)")
+        ax.set_xlabel("Date")
+        ax.set_title("Rainfall Forecast with Risk Levels")
+        ax.tick_params(axis='x', rotation=45)
+        st.pyplot(fig)
+
+        # 💧 Humidity
+        st.subheader("💦 Humidity Forecast")
+        st.bar_chart(filtered_df.set_index("Date")["Humidity (%)"])
+
+        # 🍃 Wind
+        st.subheader("🌬️ Wind Speed Forecast")
+        st.area_chart(filtered_df.set_index("Date")["Wind (kph)"])
+
+    # 📊 Tab 4: Risk Pie
     with tab4:
         st.subheader("📊 Flood Risk Breakdown")
         risk_counts = forecast_df["Rainfall (mm)"].apply(risk_level).value_counts()
@@ -218,6 +240,7 @@ if confirmed and weather:
         plt.axis('equal')
         st.pyplot(plt)
 
+    # 📚 Tab 5: Historical Comparison
     with tab5:
         st.subheader("🔢 Compare Current Forecast to Historical Averages")
         historical_df = forecast_df.copy()
