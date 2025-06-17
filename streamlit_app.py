@@ -105,7 +105,7 @@ if go:
         "Wind (kph)": [d["day"]["maxwind_kph"] for d in w["forecast"]["forecastday"]],
     })
 
-    tabs = st.tabs(["🌧️ Rain Forecast", "Map", "Trends", "Risk Pie", "History", "News"])
+    tabs = st.tabs(["🌧️ Forecast Summary", "Map", "Trends", "Risk Pie", "History", "News"])
 
     with tabs[0]:
         lvl = risk_level(max(rain[0], o["daily"]["precipitation_sum"][0]))
@@ -137,8 +137,11 @@ if go:
         ))
 
     with tabs[2]:
+        st.subheader("Rainfall Trend")
         st.line_chart(df.set_index("Date")["Rain (mm)"])
+        st.subheader("Humidity Trend")
         st.bar_chart(df.set_index("Date")["Humidity (%)"])
+        st.subheader("Wind Speed Trend")
         st.area_chart(df.set_index("Date")["Wind (kph)"])
 
     with tabs[3]:
